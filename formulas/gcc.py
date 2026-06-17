@@ -6,18 +6,14 @@ from seth.formula import Formula
 
 class GccFormula(Formula):
     name = "gcc"
-    latest = "14.2.0"
+    latest = "16.1.0"
     build_system = "custom"
     dependencies = ["gmp", "mpfr", "mpc", "zlib"]
 
     versions = {
-        "14.2.0": {
-            "url": "https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz",
-            "sha256": "a7b39bc69cbf9e25826c5a60ab26477001f7c08d85cec04bc0e29cabed6f3cc9",
-        },
-        "13.3.0": {
-            "url": "https://ftp.gnu.org/gnu/gcc/gcc-13.3.0/gcc-13.3.0.tar.xz",
-            "sha256": "0845e9621c9543a13f484e94584a49ffc0129970e9914624235fc1d061a0c083",
+        "16.1.0": {
+            "url": "https://ftp.gnu.org/gnu/gcc/gcc-16.1.0/gcc-16.1.0.tar.xz",
+            "sha256": "50efb4d94c3397aff3b0d61a5abd748b4dd31d9d3f2ab7be05b171d36a510f79",
         },
     }
 

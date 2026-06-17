@@ -9,11 +9,7 @@ class NettleFormula(Formula):
     versions = {
         "3.9.1": {
             "url": "https://ftp.gnu.org/gnu/nettle/nettle-3.9.1.tar.gz",
-            "sha256": "ccfeff981b0ca71bbd6fbcb054f407c60ffb644e6f9a9e22a8c5ac89cf9cc44f",
-        },
-        "3.9": {
-            "url": "https://ftp.gnu.org/gnu/nettle/nettle-3.9.tar.gz",
-            "sha256": "2a2ef80a84a28d4f055e6d27dc77bd5609f89a0f02f42625f1d50e42f8d26e80",
+            "sha256": "ccfeff981b0ca71bbd6fbcb054f407c60ffb644389a5be80d6716d5b550c6ce3",
         },
     }
 

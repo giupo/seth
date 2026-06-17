@@ -3,22 +3,18 @@ from seth.formula import Formula
 
 class CurlFormula(Formula):
     name = "curl"
-    latest = "8.10.1"
+    latest = "8.20.0"
     dependencies = ["openssl>=3.0", "zlib>=1.2"]
     build_dependencies = ["pkgconfig"]
 
     versions = {
+        "8.20.0": {
+            "url": "https://curl.se/download/curl-8.20.0.tar.gz",
+            "sha256": "fc5819cad3f9f5482669adcdc49a782c15f36d2a0715b395b06d9173593d2dc0"
+        },
         "8.10.1": {
             "url": "https://curl.se/download/curl-8.10.1.tar.gz",
-            "sha256": "f76abb04f032aae80f49a3e4fd95e3c883a0dda4b4e6c51e4c85cfab8a95b80e",
-        },
-        "8.9.1": {
-            "url": "https://curl.se/download/curl-8.9.1.tar.gz",
-            "sha256": "291124a007ee5111997825940b3a2a2e479e864436a17d80b4dea3e4e1aa3ce3",
-        },
-        "8.7.1": {
-            "url": "https://curl.se/download/curl-8.7.1.tar.gz",
-            "sha256": "f91249c87f68ea00cf27c44fdfa5a78423e0b827d306bf89b1f68f7d8d4e9c10",
+            "sha256": "d15ebab765d793e2e96db090f0e172d127859d78ca6f6391d7eafecfd894bbc0",
         },
     }
 
