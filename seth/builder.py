@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -97,21 +99,26 @@ def build(formula: Formula, source_dir: Path):
         raise ValueError(f"Unknown build_system: {system!r}")
 
 
+def _build_tmpdir(formula: Formula) -> Path:
+    # Use $TEMP if set, otherwise let tempfile pick the system default.
+    base = os.environ.get("TEMP") or None
+    return Path(tempfile.mkdtemp(prefix=f"seth.{formula.name}.{formula.version}.", dir=base))
+
+
 def install(formula: Formula, debug: bool = False):
     """Full pipeline: download → verify → extract → build → post_install.
 
-    With debug=True the build directory is preserved even on success.
-    On failure the build directory is always preserved regardless of debug.
+    The build tree lives in a fresh temp directory under $TEMP (or the
+    system default when $TEMP is not set).  On failure it is always
+    preserved so the user can inspect it.  With --debug it is preserved
+    even on success.
     """
     print(f"==> Installing {formula.name} {formula.version}")
 
     archive = download(formula)
     verify(archive, formula.sha256)
 
-    build_dir = config.downloads / f"_build_{formula.name}_{formula.version}"
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
-
+    build_dir = _build_tmpdir(formula)
     source_dir = extract(archive, build_dir)
     print(f"  [build dir] {source_dir}")
     print(f"  [build] {formula.build_system}")
@@ -123,7 +130,7 @@ def install(formula: Formula, debug: bool = False):
         print(f"\nseth: build failed: {exc}")
         print(f"      build directory preserved at:")
         print(f"      {source_dir}")
-        print(f"      cd '{source_dir}'  # to inspect")
+        print(f"      cd '{source_dir}'")
         raise
 
     if debug:
