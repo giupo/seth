@@ -36,6 +36,7 @@ class Formula:
     name: str = ""
     latest: str = ""
     dependencies: list[str] = []
+    build_dependencies: list[str] = []   # needed only at build time, not at runtime
     build_system: str = "autoconf"
     extra_configure_args: list[str] = []
     versions: dict = {}

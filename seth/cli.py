@@ -10,14 +10,43 @@ from . import __version__
 from . import cellar, linker
 from .builder import install as builder_install
 from .config import config
-from .formula import Formula, available_versions, list_available, load_formula
+from .formula import available_versions, list_available, load_formula
+from .resolver import PlannedStep, build_install_plan
 from .updater import update as do_update
 
 
 def _parse_pkg(spec: str) -> tuple[str, str | None]:
-    """Split 'pkg@version' into (name, version). Version is None if absent."""
+    """Split 'pkg@version' → (name, version). Version is None if absent."""
     name, _, ver = spec.partition("@")
     return name, ver or None
+
+
+# ── install helpers ───────────────────────────────────────────────────────────
+
+def _filter_plan(plan: list[PlannedStep], force: bool) -> list[PlannedStep]:
+    """Return only the steps that actually need to run."""
+    return [
+        step for step in plan
+        if force or not cellar.is_installed(step.formula.name, step.formula.version)
+    ]
+
+
+def _print_plan(steps: list[PlannedStep], target_name: str):
+    deps = [s for s in steps if s.formula.name != target_name]
+    if deps:
+        print(f"==> Dependencies:")
+        for s in deps:
+            print(f"    {s}")
+
+
+def _execute_plan(steps: list[PlannedStep], link: bool, force: bool):
+    config.ensure_dirs()
+    for step in steps:
+        builder_install(step.formula)
+        cellar.record_install(step.formula.name, step.formula.version, step.formula.keg)
+        if link:
+            linker.link(step.formula, force=force)
+            cellar.record_link(step.formula.name, step.formula.version)
 
 
 # ── commands ──────────────────────────────────────────────────────────────────
@@ -26,32 +55,16 @@ def cmd_install(args):
     for spec in args.packages:
         name, version = _parse_pkg(spec)
         formula = load_formula(name, version)
+        plan = build_install_plan(formula)
+        steps = _filter_plan(plan, args.force)
 
-        if cellar.is_installed(name, formula.version) and not args.force:
-            print(f"seth: {name} {formula.version} already installed (use --force to reinstall)")
+        if not steps:
+            print(f"seth: {formula.name} {formula.version} already installed"
+                  f" (use --force to reinstall)")
             continue
 
-        _install_deps(formula)
-        config.ensure_dirs()
-        builder_install(formula)
-        cellar.record_install(name, formula.version, formula.keg)
-
-        if not args.no_link:
-            linker.link(formula, force=args.force)
-            cellar.record_link(name, formula.version)
-
-
-def _install_deps(formula: Formula):
-    for dep in formula.dependencies:
-        if not cellar.is_installed(dep):
-            print(f"==> Dependency: {dep}")
-            dep_formula = load_formula(dep)
-            _install_deps(dep_formula)
-            config.ensure_dirs()
-            builder_install(dep_formula)
-            cellar.record_install(dep, dep_formula.version, dep_formula.keg)
-            linker.link(dep_formula)
-            cellar.record_link(dep, dep_formula.version)
+        _print_plan(steps, formula.name)
+        _execute_plan(steps, link=not args.no_link, force=args.force)
 
 
 def cmd_uninstall(args):
@@ -63,19 +76,18 @@ def cmd_uninstall(args):
             print(f"seth: {name} is not installed")
             continue
 
-        # Determine which version(s) to remove
-        if version:
-            targets = [version] if cellar.is_installed(name, version) else []
-            if not targets:
-                print(f"seth: {name} {version} is not installed")
-                continue
-        else:
-            targets = list(info["versions"].keys())
+        targets = (
+            [version] if version and cellar.is_installed(name, version)
+            else list(info["versions"].keys()) if not version
+            else []
+        )
+        if not targets:
+            print(f"seth: {name} {version} is not installed")
+            continue
 
         for ver in targets:
             if info.get("linked") == ver:
-                formula = load_formula(name, ver)
-                linker.unlink(formula)
+                linker.unlink(load_formula(name, ver))
             keg = config.cellar / name / ver
             if keg.exists():
                 shutil.rmtree(keg)
@@ -94,8 +106,7 @@ def cmd_list(args):
         return
     for name, info in sorted(installed.items()):
         linked = info.get("linked")
-        vers = sorted(info["versions"].keys(), reverse=True)
-        for ver in vers:
+        for ver in sorted(info["versions"], reverse=True):
             marker = " (linked)" if ver == linked else ""
             print(f"  {name} {ver}{marker}")
 
@@ -105,20 +116,23 @@ def cmd_info(args):
     formula = load_formula(name, version)
     info = cellar.get_info(name)
 
-    all_versions = available_versions(name)
+    all_vers = available_versions(name)
     linked = cellar.linked_version(name)
     inst_vers = cellar.installed_versions(name)
 
-    print(f"Name:         {formula.name}")
-    print(f"Latest:       {formula.latest or formula.version}")
-    print(f"Available:    {', '.join(all_versions) if all_versions else formula.version}")
-    print(f"Build system: {formula.build_system}")
-    print(f"Dependencies: {', '.join(formula.dependencies) or 'none'}")
+    print(f"Name:          {formula.name}")
+    print(f"Latest:        {formula.latest or formula.version}")
+    print(f"Available:     {', '.join(all_vers) if all_vers else formula.version}")
+    print(f"Build system:  {formula.build_system}")
+    if formula.dependencies:
+        print(f"Dependencies:  {', '.join(formula.dependencies)}")
+    if formula.build_dependencies:
+        print(f"Build deps:    {', '.join(formula.build_dependencies)}")
     if inst_vers:
-        print(f"Installed:    {', '.join(sorted(inst_vers, reverse=True))}")
-        print(f"Linked:       {linked or 'none'}")
+        print(f"Installed:     {', '.join(sorted(inst_vers, reverse=True))}")
+        print(f"Linked:        {linked or 'none'}")
     else:
-        print("Installed:    no")
+        print("Installed:     no")
 
 
 def cmd_link(args):
@@ -126,13 +140,13 @@ def cmd_link(args):
     if not cellar.is_installed(name):
         print(f"seth: {name} is not installed")
         sys.exit(1)
-    version = version or cellar.linked_version(name) or cellar.installed_versions(name)[-1]
+
+    version = version or cellar.installed_versions(name)[-1]
     formula = load_formula(name, version)
 
-    # Unlink currently linked version first
-    current_linked = cellar.linked_version(name)
-    if current_linked and current_linked != version:
-        linker.unlink(load_formula(name, current_linked))
+    current = cellar.linked_version(name)
+    if current and current != version:
+        linker.unlink(load_formula(name, current))
 
     linker.link(formula, force=args.force)
     cellar.record_link(name, formula.version)
@@ -144,8 +158,7 @@ def cmd_unlink(args):
     if not linked:
         print(f"seth: {name} is not linked")
         sys.exit(1)
-    formula = load_formula(name, version or linked)
-    linker.unlink(formula)
+    linker.unlink(load_formula(name, version or linked))
     cellar.record_link(name, None)
 
 
@@ -164,15 +177,13 @@ def cmd_upgrade(args):
             continue
 
         print(f"==> Upgrading {name}: {current or '—'} → {formula.version}")
+        plan = build_install_plan(formula)
+        steps = _filter_plan(plan, args.force)
 
         if current:
             linker.unlink(load_formula(name, current))
 
-        config.ensure_dirs()
-        builder_install(formula)
-        cellar.record_install(name, formula.version, formula.keg)
-        linker.link(formula, force=True)
-        cellar.record_link(name, formula.version)
+        _execute_plan(steps, link=True, force=True)
 
 
 def cmd_update(args):
@@ -246,7 +257,7 @@ def main():
     p.add_argument("package", metavar="pkg[@version]")
     p.set_defaults(func=cmd_unlink)
 
-    p = sub.add_parser("upgrade", help="Upgrade installed packages to the latest formula version")
+    p = sub.add_parser("upgrade", help="Upgrade installed packages")
     p.add_argument("packages", nargs="+", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_upgrade)
