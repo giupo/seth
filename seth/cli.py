@@ -220,6 +220,32 @@ def cmd_config(args):
     print(f"db:            {config.db_path}")
 
 
+def cmd_env(args):
+    root = config.root
+
+    # Ordered list of (env_var, [dirs_to_prepend])
+    # PATH and LD_LIBRARY_PATH first, then build/compile helpers.
+    entries = [
+        ("PATH",            [root / "bin", root / "sbin"]),
+        ("LD_LIBRARY_PATH", [root / "lib", root / "lib64"]),
+        ("LIBRARY_PATH",    [root / "lib", root / "lib64"]),
+        ("CPATH",           [root / "include"]),
+        ("PKG_CONFIG_PATH", [root / "lib" / "pkgconfig",
+                             root / "share" / "pkgconfig"]),
+        ("MANPATH",         [root / "share" / "man"]),
+        ("ACLOCAL_PATH",    [root / "share" / "aclocal"]),
+    ]
+
+    print(f"# seth environment — root: {root}")
+    print(f'# To apply: eval "$(seth env)"')
+    print()
+    for var, dirs in entries:
+        paths = ":".join(str(d) for d in dirs)
+        # ${VAR:+:${VAR}} expands to :$VAR when VAR is set/non-empty, else ""
+        # This avoids a trailing/leading colon when the original var is unset.
+        print(f'export {var}="{paths}${{{var}:+:${{{var}}}}}"')
+
+
 # ── parser ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -276,6 +302,9 @@ def main():
 
     p = sub.add_parser("config", help="Show current configuration")
     p.set_defaults(func=cmd_config)
+
+    p = sub.add_parser("env", help="Print shell environment variables for the seth root prefix")
+    p.set_defaults(func=cmd_env)
 
     args = parser.parse_args()
     try:
