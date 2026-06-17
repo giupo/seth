@@ -3,18 +3,14 @@ from seth.formula import Formula
 
 class EmacsFormula(Formula):
     name = "emacs"
-    latest = "30.1"
-    dependencies = ["ncurses", "libxml2", "gnutls", "zlib"]
+    latest = "30.2"
+    dependencies = ["ncurses", "libxml2", "gnutls", "zlib", "gcc"]
     build_dependencies = ["pkgconfig"]
 
     versions = {
-        "30.1": {
-            "url": "https://ftp.gnu.org/gnu/emacs/emacs-30.1.tar.gz",
-            "sha256": "eba816fb605c57ec785d14a9bff3d5abd69793d77af9a90c6c8862c44048ae64",
-        },
-        "29.4": {
-            "url": "https://ftp.gnu.org/gnu/emacs/emacs-29.4.tar.gz",
-            "sha256": "ba9e7d24fbe80e7b79e7b1abad6d84e7777d233940b9c126ad34eb3b7a09bc9b",
+        "30.2": {
+            "url": "https://ftp.gnu.org/gnu/emacs/emacs-30.2.tar.gz",
+            "sha256": "1d79a4ba4d6596f302a7146843fe59cf5caec798190bcc07c907e7ba244b076d",
         },
     }
 
@@ -33,4 +29,5 @@ class EmacsFormula(Formula):
             "--with-zlib",
             "--with-ncurses",           # terminal UI (ncursesw via PKG_CONFIG_PATH)
             "--disable-build-details",  # reproducible build (no timestamp)
+            "--with-native-compilation=aot", 
         ]
