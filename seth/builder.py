@@ -15,6 +15,42 @@ from .config import config
 from .formula import Formula
 
 
+# ── build environment ─────────────────────────────────────────────────────────
+
+def get_build_env() -> dict[str, str]:
+    """Return a copy of the environment with the seth root paths prepended.
+
+    Ensures that packages already installed in the seth root are visible
+    to configure scripts, pkg-config, and the compiler during every build.
+    Formula custom-build methods should call this instead of os.environ.copy().
+    """
+    env = os.environ.copy()
+    root = config.root
+
+    def prepend_path(key: str, *dirs):
+        new = ":".join(str(d) for d in dirs)
+        old = env.get(key, "")
+        env[key] = f"{new}:{old}" if old else new
+
+    def prepend_flags(key: str, *flags):
+        new = " ".join(flags)
+        old = env.get(key, "")
+        env[key] = f"{new} {old}" if old else new
+
+    prepend_path("PATH",            root / "bin", root / "sbin")
+    prepend_path("PKG_CONFIG_PATH", root / "lib" / "pkgconfig",
+                                    root / "share" / "pkgconfig")
+    prepend_path("LD_LIBRARY_PATH", root / "lib", root / "lib64")
+    prepend_path("LIBRARY_PATH",    root / "lib", root / "lib64")
+    prepend_path("ACLOCAL_PATH",    root / "share" / "aclocal")
+    prepend_flags("LDFLAGS",  f"-L{root}/lib", f"-L{root}/lib64")
+    prepend_flags("CPPFLAGS", f"-I{root}/include")
+
+    return env
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -60,10 +96,12 @@ def extract(archive: Path, build_dir: Path) -> Path:
     return build_dir
 
 
-def _run(cmd: list[str], cwd: Path):
+def _run(cmd: list[str], cwd: Path, env: dict | None = None):
+    if env is None:
+        env = get_build_env()
     print(f"  [run] {' '.join(str(c) for c in cmd)}")
     print(f"        (cwd: {cwd})")
-    result = subprocess.run(cmd, cwd=cwd)
+    result = subprocess.run(cmd, cwd=cwd, env=env)
     if result.returncode != 0:
         raise RuntimeError(
             f"Command failed (exit {result.returncode}): {' '.join(str(c) for c in cmd)}"
@@ -72,25 +110,27 @@ def _run(cmd: list[str], cwd: Path):
 
 def build(formula: Formula, source_dir: Path):
     formula.keg.mkdir(parents=True, exist_ok=True)
+    env = get_build_env()
     system = formula.build_system
 
     if system == "autoconf":
-        _run(["./configure"] + formula.configure_args(), cwd=source_dir)
-        _run(["make", f"-j{_nproc()}"], cwd=source_dir)
-        _run(["make", "install"], cwd=source_dir)
+        _run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
+        _run(["make", f"-j{_nproc()}"], cwd=source_dir, env=env)
+        _run(["make", "install"], cwd=source_dir, env=env)
 
     elif system == "cmake":
         build_subdir = source_dir / "_build"
         build_subdir.mkdir(exist_ok=True)
-        _run(["cmake", ".."] + formula.cmake_args(), cwd=build_subdir)
-        _run(["make", f"-j{_nproc()}"], cwd=build_subdir)
-        _run(["make", "install"], cwd=build_subdir)
+        _run(["cmake", ".."] + formula.cmake_args(), cwd=build_subdir, env=env)
+        _run(["make", f"-j{_nproc()}"], cwd=build_subdir, env=env)
+        _run(["make", "install"], cwd=build_subdir, env=env)
 
     elif system == "meson":
         build_subdir = source_dir / "_build"
-        _run(["meson", "setup", str(build_subdir)] + formula.meson_args(), cwd=source_dir)
-        _run(["ninja", "-C", str(build_subdir)], cwd=source_dir)
-        _run(["ninja", "-C", str(build_subdir), "install"], cwd=source_dir)
+        _run(["meson", "setup", str(build_subdir)] + formula.meson_args(),
+             cwd=source_dir, env=env)
+        _run(["ninja", "-C", str(build_subdir)], cwd=source_dir, env=env)
+        _run(["ninja", "-C", str(build_subdir), "install"], cwd=source_dir, env=env)
 
     elif system == "custom":
         formula.build(source_dir)
@@ -100,19 +140,12 @@ def build(formula: Formula, source_dir: Path):
 
 
 def _build_tmpdir(formula: Formula) -> Path:
-    # Use $TEMP if set, otherwise let tempfile pick the system default.
     base = os.environ.get("TEMP") or None
     return Path(tempfile.mkdtemp(prefix=f"seth.{formula.name}.{formula.version}.", dir=base))
 
 
 def install(formula: Formula, debug: bool = False):
-    """Full pipeline: download → verify → extract → build → post_install.
-
-    The build tree lives in a fresh temp directory under $TEMP (or the
-    system default when $TEMP is not set).  On failure it is always
-    preserved so the user can inspect it.  With --debug it is preserved
-    even on success.
-    """
+    """Full pipeline: download → verify → extract → build → post_install."""
     print(f"==> Installing {formula.name} {formula.version}")
 
     archive = download(formula)
@@ -143,5 +176,4 @@ def install(formula: Formula, debug: bool = False):
 
 
 def _nproc() -> int:
-    import os
     return os.cpu_count() or 1

@@ -13,15 +13,7 @@ class PerlFormula(Formula):
     versions = {
         "5.40.0": {
             "url": "https://www.cpan.org/src/5.0/perl-5.40.0.tar.gz",
-            "sha256": "c740512dde7a49b2f894c4d7a8e6e0b6da25af4dd5bc21dc7551cf6c6ef43a01",
-        },
-        "5.38.2": {
-            "url": "https://www.cpan.org/src/5.0/perl-5.38.2.tar.gz",
-            "sha256": "a0a31534451eb7b83c7d6594a497543a54d488bc90a0a6a7a5f7b4a31f0b9e4e",
-        },
-        "5.36.3": {
-            "url": "https://www.cpan.org/src/5.0/perl-5.36.3.tar.gz",
-            "sha256": "e876f8e3f76d7a5528e8a3f0b4c9b2bf4d8d3e9f83ad2c9e8b1d45f7a2e3c8b9",
+            "sha256": "c740348f357396327a9795d3e8323bafd0fe8a5c7835fc1cbaba0cc8dfe7161f",
         },
     }
 
@@ -34,7 +26,8 @@ class PerlFormula(Formula):
         zlib_keg = config.cellar / "zlib" / zlib_ver
 
         def run(cmd, cwd=source_dir, extra_env=None):
-            env = os.environ.copy()
+            from seth.builder import get_build_env
+            env = get_build_env()
             if extra_env:
                 env.update(extra_env)
             print(f"  [run] {' '.join(str(c) for c in cmd)}")
