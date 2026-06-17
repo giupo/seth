@@ -8,11 +8,11 @@ class OpenSSLFormula(Formula):
     name = "openssl"
     latest = "3.3.2"
     build_system = "custom"
-
+    depeendencies = ["zlib"]
     versions = {
         "3.3.2": {
             "url": "https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz",
-            "sha256": "2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89f9e3a30f5d485afc8a",
+            "sha256": "2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281",
         },
         "3.3.1": {
             "url": "https://github.com/openssl/openssl/releases/download/openssl-3.3.1/openssl-3.3.1.tar.gz",

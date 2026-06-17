@@ -52,7 +52,6 @@ def extract(archive: Path, build_dir: Path) -> Path:
     build_dir.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive) as tf:
         tf.extractall(build_dir, filter="data")
-    # Return the single top-level directory inside the archive
     entries = list(build_dir.iterdir())
     if len(entries) == 1 and entries[0].is_dir():
         return entries[0]
@@ -61,14 +60,16 @@ def extract(archive: Path, build_dir: Path) -> Path:
 
 def _run(cmd: list[str], cwd: Path):
     print(f"  [run] {' '.join(str(c) for c in cmd)}")
+    print(f"        (cwd: {cwd})")
     result = subprocess.run(cmd, cwd=cwd)
     if result.returncode != 0:
-        raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(str(c) for c in cmd)}")
+        raise RuntimeError(
+            f"Command failed (exit {result.returncode}): {' '.join(str(c) for c in cmd)}"
+        )
 
 
 def build(formula: Formula, source_dir: Path):
-    keg = formula.keg
-    keg.mkdir(parents=True, exist_ok=True)
+    formula.keg.mkdir(parents=True, exist_ok=True)
     system = formula.build_system
 
     if system == "autoconf":
@@ -85,10 +86,7 @@ def build(formula: Formula, source_dir: Path):
 
     elif system == "meson":
         build_subdir = source_dir / "_build"
-        _run(
-            ["meson", "setup", str(build_subdir)] + formula.meson_args(),
-            cwd=source_dir,
-        )
+        _run(["meson", "setup", str(build_subdir)] + formula.meson_args(), cwd=source_dir)
         _run(["ninja", "-C", str(build_subdir)], cwd=source_dir)
         _run(["ninja", "-C", str(build_subdir), "install"], cwd=source_dir)
 
@@ -99,8 +97,12 @@ def build(formula: Formula, source_dir: Path):
         raise ValueError(f"Unknown build_system: {system!r}")
 
 
-def install(formula: Formula):
-    """Full pipeline: download → verify → extract → build → post_install."""
+def install(formula: Formula, debug: bool = False):
+    """Full pipeline: download → verify → extract → build → post_install.
+
+    With debug=True the build directory is preserved even on success.
+    On failure the build directory is always preserved regardless of debug.
+    """
     print(f"==> Installing {formula.name} {formula.version}")
 
     archive = download(formula)
@@ -111,12 +113,25 @@ def install(formula: Formula):
         shutil.rmtree(build_dir)
 
     source_dir = extract(archive, build_dir)
+    print(f"  [build dir] {source_dir}")
     print(f"  [build] {formula.build_system}")
-    build(formula, source_dir)
 
-    formula.post_install()
+    try:
+        build(formula, source_dir)
+        formula.post_install()
+    except Exception as exc:
+        print(f"\nseth: build failed: {exc}")
+        print(f"      build directory preserved at:")
+        print(f"      {source_dir}")
+        print(f"      cd '{source_dir}'  # to inspect")
+        raise
 
-    shutil.rmtree(build_dir, ignore_errors=True)
+    if debug:
+        print(f"  [debug] build directory preserved at:")
+        print(f"          {source_dir}")
+    else:
+        shutil.rmtree(build_dir, ignore_errors=True)
+
     print(f"==> {formula.name} {formula.version} installed to {formula.keg}")
 
 

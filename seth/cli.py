@@ -39,10 +39,10 @@ def _print_plan(steps: list[PlannedStep], target_name: str):
             print(f"    {s}")
 
 
-def _execute_plan(steps: list[PlannedStep], link: bool, force: bool):
+def _execute_plan(steps: list[PlannedStep], link: bool, force: bool, debug: bool = False):
     config.ensure_dirs()
     for step in steps:
-        builder_install(step.formula)
+        builder_install(step.formula, debug=debug)
         cellar.record_install(step.formula.name, step.formula.version, step.formula.keg)
         if link:
             linker.link(step.formula, force=force)
@@ -64,7 +64,7 @@ def cmd_install(args):
             continue
 
         _print_plan(steps, formula.name)
-        _execute_plan(steps, link=not args.no_link, force=args.force)
+        _execute_plan(steps, link=not args.no_link, force=args.force, debug=args.debug)
 
 
 def cmd_uninstall(args):
@@ -235,6 +235,8 @@ def main():
     p.add_argument("packages", nargs="+", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true", help="Reinstall even if already installed")
     p.add_argument("--no-link", action="store_true", help="Install into cellar without linking")
+    p.add_argument("--debug", action="store_true",
+                   help="Preserve build directory after install for inspection")
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser("uninstall", aliases=["remove", "rm"], help="Uninstall packages")
