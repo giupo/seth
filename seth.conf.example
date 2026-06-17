@@ -1,0 +1,14 @@
+# seth configuration file
+# Copy to ~/.config/seth/seth.conf and customize as needed.
+# All paths can also be overridden via environment variables:
+#   SETH_ROOT, SETH_CELLAR, SETH_FORMULAS
+
+[paths]
+# Root prefix: bin/, lib/, include/ symlinks land here
+root = /opt/seth
+
+# Where compiled kegs are stored (root/Cellar by default)
+cellar = /opt/seth/Cellar
+
+# Directory containing formula .py files
+# formulas = /opt/seth/formulas

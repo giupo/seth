@@ -1,0 +1,16 @@
+[project]
+name = "seth"
+version = "0.1.0"
+description = "A source-based package manager for Linux (Osiride platform)"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+seth = "seth.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["seth", "formulas"]
