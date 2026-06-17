@@ -10,23 +10,35 @@ from . import __version__
 from . import cellar, linker
 from .builder import install as builder_install
 from .config import config
-from .formula import Formula, list_available, load_formula
+from .formula import Formula, available_versions, list_available, load_formula
+from .updater import update as do_update
 
+
+def _parse_pkg(spec: str) -> tuple[str, str | None]:
+    """Split 'pkg@version' into (name, version). Version is None if absent."""
+    name, _, ver = spec.partition("@")
+    return name, ver or None
+
+
+# ── commands ──────────────────────────────────────────────────────────────────
 
 def cmd_install(args):
-    for name in args.packages:
-        if cellar.is_installed(name) and not args.force:
-            current = cellar.installed_version(name)
-            print(f"seth: {name} {current} already installed (use --force to reinstall)")
+    for spec in args.packages:
+        name, version = _parse_pkg(spec)
+        formula = load_formula(name, version)
+
+        if cellar.is_installed(name, formula.version) and not args.force:
+            print(f"seth: {name} {formula.version} already installed (use --force to reinstall)")
             continue
-        formula = load_formula(name)
+
         _install_deps(formula)
         config.ensure_dirs()
         builder_install(formula)
         cellar.record_install(name, formula.version, formula.keg)
+
         if not args.no_link:
             linker.link(formula, force=args.force)
-            cellar.record_link(name, True)
+            cellar.record_link(name, formula.version)
 
 
 def _install_deps(formula: Formula):
@@ -39,28 +51,40 @@ def _install_deps(formula: Formula):
             builder_install(dep_formula)
             cellar.record_install(dep, dep_formula.version, dep_formula.keg)
             linker.link(dep_formula)
-            cellar.record_link(dep, True)
+            cellar.record_link(dep, dep_formula.version)
 
 
 def cmd_uninstall(args):
-    for name in args.packages:
+    for spec in args.packages:
+        name, version = _parse_pkg(spec)
         info = cellar.get_info(name)
+
         if not info:
             print(f"seth: {name} is not installed")
             continue
-        formula = load_formula(name)
-        if info.get("linked"):
-            linker.unlink(formula)
-        keg = formula.keg
-        if keg.exists():
-            shutil.rmtree(keg)
-            print(f"==> Removed {keg}")
-            # Remove version dir parent if empty
-            try:
-                keg.parent.rmdir()
-            except OSError:
-                pass
-        cellar.record_uninstall(name)
+
+        # Determine which version(s) to remove
+        if version:
+            targets = [version] if cellar.is_installed(name, version) else []
+            if not targets:
+                print(f"seth: {name} {version} is not installed")
+                continue
+        else:
+            targets = list(info["versions"].keys())
+
+        for ver in targets:
+            if info.get("linked") == ver:
+                formula = load_formula(name, ver)
+                linker.unlink(formula)
+            keg = config.cellar / name / ver
+            if keg.exists():
+                shutil.rmtree(keg)
+                print(f"==> Removed {keg}")
+                try:
+                    keg.parent.rmdir()
+                except OSError:
+                    pass
+            cellar.record_uninstall(name, ver)
 
 
 def cmd_list(args):
@@ -69,88 +93,123 @@ def cmd_list(args):
         print("No packages installed.")
         return
     for name, info in sorted(installed.items()):
-        linked = " (linked)" if info.get("linked") else ""
-        print(f"  {name} {info['version']}{linked}")
+        linked = info.get("linked")
+        vers = sorted(info["versions"].keys(), reverse=True)
+        for ver in vers:
+            marker = " (linked)" if ver == linked else ""
+            print(f"  {name} {ver}{marker}")
 
 
 def cmd_info(args):
-    formula = load_formula(args.package)
-    info = cellar.get_info(args.package)
+    name, version = _parse_pkg(args.package)
+    formula = load_formula(name, version)
+    info = cellar.get_info(name)
+
+    all_versions = available_versions(name)
+    linked = cellar.linked_version(name)
+    inst_vers = cellar.installed_versions(name)
+
     print(f"Name:         {formula.name}")
-    print(f"Version:      {formula.version}")
-    print(f"URL:          {formula.url}")
+    print(f"Latest:       {formula.latest or formula.version}")
+    print(f"Available:    {', '.join(all_versions) if all_versions else formula.version}")
     print(f"Build system: {formula.build_system}")
     print(f"Dependencies: {', '.join(formula.dependencies) or 'none'}")
-    print(f"Keg:          {formula.keg}")
-    if info:
-        print(f"Installed:    yes (at {info['installed_at']})")
-        print(f"Linked:       {'yes' if info.get('linked') else 'no'}")
+    if inst_vers:
+        print(f"Installed:    {', '.join(sorted(inst_vers, reverse=True))}")
+        print(f"Linked:       {linked or 'none'}")
     else:
         print("Installed:    no")
 
 
 def cmd_link(args):
-    formula = load_formula(args.package)
-    if not cellar.is_installed(args.package):
-        print(f"seth: {args.package} is not installed")
+    name, version = _parse_pkg(args.package)
+    if not cellar.is_installed(name):
+        print(f"seth: {name} is not installed")
         sys.exit(1)
+    version = version or cellar.linked_version(name) or cellar.installed_versions(name)[-1]
+    formula = load_formula(name, version)
+
+    # Unlink currently linked version first
+    current_linked = cellar.linked_version(name)
+    if current_linked and current_linked != version:
+        linker.unlink(load_formula(name, current_linked))
+
     linker.link(formula, force=args.force)
-    cellar.record_link(args.package, True)
+    cellar.record_link(name, formula.version)
 
 
 def cmd_unlink(args):
-    formula = load_formula(args.package)
-    if not cellar.is_installed(args.package):
-        print(f"seth: {args.package} is not installed")
+    name, version = _parse_pkg(args.package)
+    linked = cellar.linked_version(name)
+    if not linked:
+        print(f"seth: {name} is not linked")
         sys.exit(1)
+    formula = load_formula(name, version or linked)
     linker.unlink(formula)
-    cellar.record_link(args.package, False)
+    cellar.record_link(name, None)
 
 
 def cmd_upgrade(args):
-    for name in args.packages:
+    for spec in args.packages:
+        name, requested_version = _parse_pkg(spec)
+
         if not cellar.is_installed(name):
             print(f"seth: {name} is not installed, installing instead")
-        formula = load_formula(name)
-        current = cellar.installed_version(name)
+
+        formula = load_formula(name, requested_version)
+        current = cellar.linked_version(name)
+
         if current == formula.version and not args.force:
             print(f"seth: {name} {formula.version} already up-to-date")
             continue
-        print(f"==> Upgrading {name}: {current} → {formula.version}")
-        old_formula_keg = formula.keg  # same object, keg derived from version
-        if cellar.get_info(name) and cellar.get_info(name).get("linked"):
-            linker.unlink(formula)
+
+        print(f"==> Upgrading {name}: {current or '—'} → {formula.version}")
+
+        if current:
+            linker.unlink(load_formula(name, current))
+
         config.ensure_dirs()
         builder_install(formula)
         cellar.record_install(name, formula.version, formula.keg)
         linker.link(formula, force=True)
-        cellar.record_link(name, True)
+        cellar.record_link(name, formula.version)
+
+
+def cmd_update(args):
+    do_update()
 
 
 def cmd_search(args):
-    available = list_available()
     term = args.term.lower()
-    matches = [n for n in available if term in n]
-    if matches:
-        for m in matches:
-            installed_mark = " [installed]" if cellar.is_installed(m) else ""
-            print(f"  {m}{installed_mark}")
-    else:
+    matches = [n for n in list_available() if term in n]
+    if not matches:
         print(f"No formulas matching '{args.term}'")
+        return
+    for m in matches:
+        inst = cellar.linked_version(m)
+        marker = f" [installed: {inst}]" if inst else ""
+        print(f"  {m}{marker}")
 
 
 def cmd_available(args):
     for name in list_available():
-        installed_mark = " [installed]" if cellar.is_installed(name) else ""
-        print(f"  {name}{installed_mark}")
+        inst = cellar.linked_version(name)
+        marker = f" [installed: {inst}]" if inst else ""
+        print(f"  {name}{marker}")
 
 
 def cmd_config(args):
-    print(f"root:     {config.root}")
-    print(f"cellar:   {config.cellar}")
-    print(f"formulas: {config.formulas_dir}")
-    print(f"db:       {config.db_path}")
+    print(f"root:          {config.root}")
+    print(f"cellar:        {config.cellar}")
+    print(f"formulas (search order):")
+    for d in config.formula_search_dirs:
+        tag = " [remote cache]" if d == config.remote_formulas_dir else ""
+        print(f"               {d}{tag}")
+    print(f"formulas_url:  {config.formulas_url or '(not configured)'}")
+    print(f"db:            {config.db_path}")
 
+
+# ── parser ────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
@@ -161,54 +220,47 @@ def main():
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     sub.required = True
 
-    # install
     p = sub.add_parser("install", help="Download, build and install packages")
-    p.add_argument("packages", nargs="+", metavar="package")
+    p.add_argument("packages", nargs="+", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true", help="Reinstall even if already installed")
-    p.add_argument("--no-link", action="store_true", help="Install into cellar but do not link")
+    p.add_argument("--no-link", action="store_true", help="Install into cellar without linking")
     p.set_defaults(func=cmd_install)
 
-    # uninstall
     p = sub.add_parser("uninstall", aliases=["remove", "rm"], help="Uninstall packages")
-    p.add_argument("packages", nargs="+", metavar="package")
+    p.add_argument("packages", nargs="+", metavar="pkg[@version]")
     p.set_defaults(func=cmd_uninstall)
 
-    # list
     p = sub.add_parser("list", aliases=["ls"], help="List installed packages")
     p.set_defaults(func=cmd_list)
 
-    # info
     p = sub.add_parser("info", help="Show information about a package")
-    p.add_argument("package", metavar="package")
+    p.add_argument("package", metavar="pkg[@version]")
     p.set_defaults(func=cmd_info)
 
-    # link
-    p = sub.add_parser("link", help="Symlink a package into the root prefix")
-    p.add_argument("package", metavar="package")
+    p = sub.add_parser("link", help="Symlink a keg into the root prefix")
+    p.add_argument("package", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true", help="Overwrite existing symlinks")
     p.set_defaults(func=cmd_link)
 
-    # unlink
-    p = sub.add_parser("unlink", help="Remove symlinks for a package from the root prefix")
-    p.add_argument("package", metavar="package")
+    p = sub.add_parser("unlink", help="Remove symlinks from the root prefix")
+    p.add_argument("package", metavar="pkg[@version]")
     p.set_defaults(func=cmd_unlink)
 
-    # upgrade
-    p = sub.add_parser("upgrade", help="Upgrade installed packages")
-    p.add_argument("packages", nargs="+", metavar="package")
+    p = sub.add_parser("upgrade", help="Upgrade installed packages to the latest formula version")
+    p.add_argument("packages", nargs="+", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_upgrade)
 
-    # search
-    p = sub.add_parser("search", help="Search available formulas")
+    p = sub.add_parser("update", help="Fetch the remote formula repository")
+    p.set_defaults(func=cmd_update)
+
+    p = sub.add_parser("search", help="Search available formulas by name")
     p.add_argument("term", metavar="term")
     p.set_defaults(func=cmd_search)
 
-    # available
     p = sub.add_parser("available", help="List all available formulas")
     p.set_defaults(func=cmd_available)
 
-    # config
     p = sub.add_parser("config", help="Show current configuration")
     p.set_defaults(func=cmd_config)
 

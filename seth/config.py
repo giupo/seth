@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 _DEFAULT_ROOT = Path.home() / ".local" / "seth"
+_BUNDLED_FORMULAS = Path(__file__).parent.parent / "formulas"
 
 
 class _Config:
@@ -25,18 +26,23 @@ class _Config:
                 cfg.get("paths", "cellar", fallback=str(self.root / "Cellar")),
             )
         )
-        self.formulas_dir = Path(
-            os.environ.get(
-                "SETH_FORMULAS",
-                cfg.get(
-                    "paths",
-                    "formulas",
-                    fallback=str(Path(__file__).parent.parent / "formulas"),
-                ),
-            )
-        )
         self.downloads = self.root / "Downloads"
         self.db_path = self.root / "var" / "seth" / "db.json"
+        self.remote_formulas_dir = self.root / "var" / "seth" / "formulas"
+
+        # URL of the remote formula repository (git or tar.gz)
+        self.formulas_url = os.environ.get(
+            "SETH_FORMULAS_URL",
+            cfg.get("formulas", "url", fallback=""),
+        )
+
+        # Search order: explicit override → remote cache → bundled.
+        # If an explicit path is given, use only that.
+        explicit = os.environ.get("SETH_FORMULAS") or cfg.get("paths", "formulas", fallback="")
+        if explicit:
+            self.formula_search_dirs = [Path(explicit)]
+        else:
+            self.formula_search_dirs = [self.remote_formulas_dir, _BUNDLED_FORMULAS]
 
     def ensure_dirs(self):
         for d in (self.cellar, self.downloads, self.db_path.parent):

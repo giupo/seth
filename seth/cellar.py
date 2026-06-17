@@ -1,4 +1,16 @@
-"""Cellar: tracks installed kegs in a JSON database."""
+"""Cellar: multi-version JSON database of installed kegs.
+
+DB schema per package:
+{
+  "wget": {
+    "versions": {
+      "1.21.4": {"keg": "...", "installed_at": "..."},
+      "1.21.3": {"keg": "...", "installed_at": "..."}
+    },
+    "linked": "1.21.4"   # null when nothing is linked
+  }
+}
+"""
 
 from __future__ import annotations
 
@@ -11,8 +23,28 @@ from .config import config
 
 def _load_db() -> dict:
     if config.db_path.exists():
-        return json.loads(config.db_path.read_text())
+        return _migrate(json.loads(config.db_path.read_text()))
     return {}
+
+
+def _migrate(raw: dict) -> dict:
+    """Upgrade old single-version entries to the multi-version schema."""
+    out = {}
+    for name, entry in raw.items():
+        if "versions" in entry:
+            out[name] = entry
+        else:
+            ver = entry.get("version", "")
+            out[name] = {
+                "versions": {
+                    ver: {
+                        "keg": entry.get("keg", ""),
+                        "installed_at": entry.get("installed_at", ""),
+                    }
+                },
+                "linked": ver if entry.get("linked") else None,
+            }
+    return out
 
 
 def _save_db(db: dict):
@@ -20,29 +52,43 @@ def _save_db(db: dict):
     config.db_path.write_text(json.dumps(db, indent=2))
 
 
+# ── write ────────────────────────────────────────────────────────────────────
+
 def record_install(name: str, version: str, keg: Path):
     db = _load_db()
-    db[name] = {
-        "version": version,
+    pkg = db.setdefault(name, {"versions": {}, "linked": None})
+    pkg["versions"][version] = {
         "keg": str(keg),
         "installed_at": datetime.now(timezone.utc).isoformat(),
-        "linked": False,
     }
     _save_db(db)
 
 
-def record_link(name: str, linked: bool):
+def record_link(name: str, version: str | None):
+    """Set the linked version (None = unlinked)."""
     db = _load_db()
     if name in db:
-        db[name]["linked"] = linked
+        db[name]["linked"] = version
         _save_db(db)
 
 
-def record_uninstall(name: str):
+def record_uninstall(name: str, version: str | None = None):
+    """Remove one version or the whole package entry."""
     db = _load_db()
-    db.pop(name, None)
+    if name not in db:
+        return
+    if version is None:
+        del db[name]
+    else:
+        db[name]["versions"].pop(version, None)
+        if db[name]["linked"] == version:
+            db[name]["linked"] = None
+        if not db[name]["versions"]:
+            del db[name]
     _save_db(db)
 
+
+# ── read ─────────────────────────────────────────────────────────────────────
 
 def get_info(name: str) -> dict | None:
     return _load_db().get(name)
@@ -52,10 +98,23 @@ def list_installed() -> dict:
     return _load_db()
 
 
-def is_installed(name: str) -> bool:
-    return name in _load_db()
+def is_installed(name: str, version: str | None = None) -> bool:
+    db = _load_db()
+    if name not in db:
+        return False
+    if version is None:
+        return bool(db[name]["versions"])
+    return version in db[name]["versions"]
+
+
+def installed_versions(name: str) -> list[str]:
+    return list(_load_db().get(name, {}).get("versions", {}).keys())
+
+
+def linked_version(name: str) -> str | None:
+    return _load_db().get(name, {}).get("linked")
 
 
 def installed_version(name: str) -> str | None:
-    entry = _load_db().get(name)
-    return entry["version"] if entry else None
+    """Alias for linked_version — kept for backwards compatibility."""
+    return linked_version(name)

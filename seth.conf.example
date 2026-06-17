@@ -1,14 +1,27 @@
 # seth configuration file
 # Copy to ~/.config/seth/seth.conf and customize as needed.
-# All paths can also be overridden via environment variables:
-#   SETH_ROOT, SETH_CELLAR, SETH_FORMULAS
+# All settings can also be overridden via environment variables.
 
 [paths]
-# Root prefix: bin/, lib/, include/ symlinks land here
+# Root prefix: bin/, lib/, include/ symlinks land here.
+# Env override: SETH_ROOT
 root = /opt/seth
 
-# Where compiled kegs are stored (root/Cellar by default)
+# Where compiled kegs live (default: <root>/Cellar).
+# Env override: SETH_CELLAR
 cellar = /opt/seth/Cellar
 
-# Directory containing formula .py files
+# Override the formula search path entirely (disables remote cache).
+# Env override: SETH_FORMULAS
 # formulas = /opt/seth/formulas
+
+[formulas]
+# URL of the remote formula repository.
+# Supports git repos (ending in .git or hosted on github/gitlab/bitbucket)
+# and tar.gz archives (e.g. a GitHub "Download ZIP" link).
+# Env override: SETH_FORMULAS_URL
+#
+# Examples:
+#   url = https://github.com/yourorg/seth-formulas.git
+#   url = https://github.com/yourorg/seth-formulas/archive/refs/heads/main.tar.gz
+url =
