@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 
@@ -190,6 +191,13 @@ def cmd_update(args):
     do_update()
 
 
+def cmd_edit(args):
+    from .formula import _find_formula_file
+    path = _find_formula_file(args.formula)
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
+    os.execvp(editor, [editor, str(path)])
+
+
 def cmd_search(args):
     term = args.term.lower()
     matches = [n for n in list_available() if term in n]
@@ -305,6 +313,10 @@ def main():
 
     p = sub.add_parser("env", help="Print shell environment variables for the seth root prefix")
     p.set_defaults(func=cmd_env)
+
+    p = sub.add_parser("edit", help="Open a formula in $EDITOR")
+    p.add_argument("formula", metavar="formula")
+    p.set_defaults(func=cmd_edit)
 
     args = parser.parse_args()
     try:
