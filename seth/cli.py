@@ -6,6 +6,7 @@ import argparse
 import os
 import shutil
 import sys
+from pathlib import Path
 
 from . import __version__
 from . import cellar, colors as col, linker
@@ -73,8 +74,8 @@ def _execute_plan(steps: list[PlannedStep], link: bool, force: bool, debug: bool
         elif link:
             print(col.header(f"Relinking {col.pkg(f.name, f.version)}"))
         if link:
-            linker.link(f, force=force)
-            cellar.record_link(f.name, f.version)
+            linked_files = linker.link(f, force=force)
+            cellar.record_link(f.name, f.version, linked_files)
 
 
 # ── commands ──────────────────────────────────────────────────────────────────
@@ -118,7 +119,8 @@ def cmd_uninstall(args):
 
         for ver in targets:
             if info.get("linked") == ver:
-                linker.unlink(load_formula(name, ver))
+                linker.unlink(cellar.linked_files(name))
+                cellar.record_link(name, None)
             keg = config.cellar / name / ver
             if keg.exists():
                 shutil.rmtree(keg)
@@ -187,10 +189,11 @@ def cmd_link(args):
 
     current = cellar.linked_version(name)
     if current and current != version:
-        linker.unlink(load_formula(name, current))
+        linker.unlink(cellar.linked_files(name))
+        cellar.record_link(name, None)
 
-    linker.link(formula, force=args.force)
-    cellar.record_link(name, formula.version)
+    linked_files = linker.link(formula, force=args.force)
+    cellar.record_link(name, formula.version, linked_files)
 
 
 def cmd_unlink(args):
@@ -199,7 +202,11 @@ def cmd_unlink(args):
     if not linked:
         print(f"seth: {name} is not linked")
         sys.exit(1)
-    linker.unlink(load_formula(name, version or linked))
+    files = cellar.linked_files(name)
+    if not files:
+        # Legacy entry: linked_files not recorded — rebuild list from keg.
+        files = linker.scan_keg_files(config.cellar / name / linked)
+    linker.unlink(files)
     cellar.record_link(name, None)
 
 
@@ -226,7 +233,8 @@ def cmd_upgrade(args):
         steps = _filter_plan(plan, args.force, link=True)
 
         if current:
-            linker.unlink(load_formula(name, current))
+            linker.unlink(cellar.linked_files(name))
+            cellar.record_link(name, None)
 
         _execute_plan(steps, link=True, force=True)
 
@@ -303,8 +311,10 @@ def cmd_init(args):
     import configparser
 
     config_path = Path(
-        os.environ.get("SETH_CONFIG",
-                       Path.home() / ".config" / "seth" / "seth.conf")
+        os.environ.get(
+            "SETH_CONFIG",
+            Path.home() / ".config" / "seth" / "seth.conf"
+        )
     )
 
     def _ask_path(label: str, default: Path) -> Path:

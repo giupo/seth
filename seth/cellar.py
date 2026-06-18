@@ -64,11 +64,12 @@ def record_install(name: str, version: str, keg: Path):
     _save_db(db)
 
 
-def record_link(name: str, version: str | None):
-    """Set the linked version (None = unlinked)."""
+def record_link(name: str, version: str | None, linked_files: list[str] | None = None):
+    """Set the linked version and the list of files linked into root (None = unlinked)."""
     db = _load_db()
     if name in db:
         db[name]["linked"] = version
+        db[name]["linked_files"] = linked_files if version else []
         _save_db(db)
 
 
@@ -83,6 +84,7 @@ def record_uninstall(name: str, version: str | None = None):
         db[name]["versions"].pop(version, None)
         if db[name]["linked"] == version:
             db[name]["linked"] = None
+            db[name]["linked_files"] = []
         if not db[name]["versions"]:
             del db[name]
     _save_db(db)
@@ -113,6 +115,11 @@ def installed_versions(name: str) -> list[str]:
 
 def linked_version(name: str) -> str | None:
     return _load_db().get(name, {}).get("linked")
+
+
+def linked_files(name: str) -> list[str]:
+    """Return the list of relative paths linked into root for the given package."""
+    return _load_db().get(name, {}).get("linked_files") or []
 
 
 def installed_version(name: str) -> str | None:

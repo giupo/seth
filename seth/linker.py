@@ -24,7 +24,8 @@ def _iter_keg_files(keg: Path):
                 yield f, rel
 
 
-def link(formula: Formula, force: bool = False):
+def link(formula: Formula, force: bool = False) -> list[str]:
+    """Symlink keg into root. Returns list of relative paths that were linked."""
     keg = formula.keg
     if not keg.exists():
         raise FileNotFoundError(f"Keg not found: {keg}")
@@ -37,8 +38,7 @@ def link(formula: Formula, force: bool = False):
         if target.exists() and not target.is_symlink():
             conflicts.append(target)
         elif target.is_symlink() and not force:
-            existing_target = target.resolve()
-            if existing_target != keg_file.resolve():
+            if target.readlink() != keg_file:
                 conflicts.append(target)
 
     if conflicts and not force:
@@ -47,33 +47,41 @@ def link(formula: Formula, force: bool = False):
             f"Conflicts found (use --force to overwrite):\n  {conflict_list}"
         )
 
-    linked = 0
+    linked_files: list[str] = []
     for keg_file, rel in _iter_keg_files(keg):
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.is_symlink():
             target.unlink()
         target.symlink_to(keg_file)
-        linked += 1
+        linked_files.append(str(rel))
 
     from . import colors as col
-    print(col.header(f"Linked {col.cyan(str(linked))} files into {col.dim(str(root))}"))
+    print(col.header(f"Linked {col.cyan(str(len(linked_files)))} files into {col.dim(str(root))}"))
+    return linked_files
 
 
-def unlink(formula: Formula):
-    keg = formula.keg
+def unlink(root_files: list[str]):
+    """Remove symlinks from root given the list of relative paths recorded at link time."""
     root = config.root
     removed = 0
 
-    for keg_file, rel in _iter_keg_files(keg):
+    for rel in root_files:
         target = root / rel
-        if target.is_symlink() and target.resolve() == keg_file.resolve():
+        if target.is_symlink():
             target.unlink()
             removed += 1
             _rmdir_if_empty(target.parent, root)
 
     from . import colors as col
     print(col.header(f"Unlinked {col.cyan(str(removed))} files from {col.dim(str(root))}"))
+
+
+def scan_keg_files(keg: Path) -> list[str]:
+    """Return relative paths of all linkable files in a keg (used as legacy fallback)."""
+    if not keg.exists():
+        return []
+    return [str(rel) for _, rel in _iter_keg_files(keg)]
 
 
 def _rmdir_if_empty(directory: Path, stop_at: Path):

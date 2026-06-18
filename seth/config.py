@@ -49,8 +49,8 @@ class _Config:
             if _BUNDLED_FORMULAS.is_dir():
                 self.formula_search_dirs.append(_BUNDLED_FORMULAS)
 
-        # Patch dirs mirror formula dirs: patches/<formula>/<file>.patch
-        self.patch_dirs = [d.parent / "patches" for d in self.formula_search_dirs]
+        # Patches live inside each formula directory: <formula_dir>/patches/<pkg>/<file>.patch
+        self.patch_dirs = [d / "patches" for d in self.formula_search_dirs]
 
     def ensure_dirs(self):
         for d in (self.cellar, self.downloads, self.db_path.parent):
