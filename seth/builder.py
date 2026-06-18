@@ -97,11 +97,18 @@ def verify(archive: Path, expected_sha256: str):
 def extract(archive: Path, build_dir: Path) -> Path:
     print(f"  {col.tag('extract')}{archive.name}")
     build_dir.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive) as tf:
-        tf.extractall(build_dir, filter="data")
-    entries = list(build_dir.iterdir())
-    if len(entries) == 1 and entries[0].is_dir():
-        return entries[0]
+
+    try:
+        with tarfile.open(archive) as tf:
+            tf.extractall(build_dir, filter="data")
+            entries = list(build_dir.iterdir())
+            if len(entries) == 1 and entries[0].is_dir():
+                return entries[0]
+    except Exception:
+        print(f"  {col.tag('warn')} can't decompress {archive}, assume it's a file ...")
+        shutil.copy2(archive, build_dir)
+
+        
     return build_dir
 
 
