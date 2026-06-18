@@ -358,16 +358,25 @@ def cmd_init(args):
     root = _ask_path("Root prefix", default_root)
     cellar = _ask_path("Cellar", root / "Cellar")
     formulas_url = _ask_str("Remote formulas URL", "")
-
+    tmp_dir = _ask_str("Temp dir", None)
+    
     print()
 
     cfg = configparser.ConfigParser()
-    cfg["paths"] = {"root": str(root)}
+    cfg["paths"] = {
+        "root": str(root)
+    }
+    
     if cellar != root / "Cellar":
         cfg["paths"]["cellar"] = str(cellar)
+
     if formulas_url:
         cfg["formulas"] = {"url": formulas_url}
 
+    if tmp_dir:
+        cfg["paths"]["tmp_dir"] = str(tmp_dir)
+        
+        
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         cfg.write(f)

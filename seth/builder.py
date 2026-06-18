@@ -162,8 +162,12 @@ def build(formula: Formula, source_dir: Path):
 
 
 def _build_tmpdir(formula: Formula) -> Path:
-    base = os.environ.get("TEMP") or None
-    return Path(tempfile.mkdtemp(prefix=f"seth.{formula.name}.{formula.version}.", dir=base))
+    return Path(
+        tempfile.mkdtemp(
+            prefix=f"seth.{formula.name}.{formula.version}.",
+            dir=config.tmp_dir
+        )
+    )
 
 
 def install(formula: Formula, debug: bool = False):

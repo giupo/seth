@@ -30,7 +30,7 @@ class _Config:
         self.downloads = self.root / "Downloads"
         self.db_path = self.root / "var" / "seth" / "db.json"
         self.remote_formulas_dir = self.root / "var" / "seth" / "formulas"
-
+        
         # URL of the remote formula repository (git or tar.gz)
         self.formulas_url = os.environ.get(
             "SETH_FORMULAS_URL",
@@ -52,9 +52,17 @@ class _Config:
         # Patches live inside each formula directory: <formula_dir>/patches/<pkg>/<file>.patch
         self.patch_dirs = [d / "patches" for d in self.formula_search_dirs]
 
+        # Temp dir
+        self.tmp_dir = os.environ.get(
+            "TEMP", cfg.get(
+                "paths", "tmp_dir", fallback=None
+            )
+        )
+        
+        
     def ensure_dirs(self):
         for d in (self.cellar, self.downloads, self.db_path.parent):
             d.mkdir(parents=True, exist_ok=True)
-
+            
 
 config = _Config()

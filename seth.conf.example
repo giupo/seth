@@ -15,6 +15,10 @@ cellar = /opt/seth/Cellar
 # Env override: SETH_FORMULAS
 # formulas = /opt/seth/formulas
 
+# Temp biuld dir: root directory for build artifacts that will be deleted
+# conigure if you want to move away from the defaults (TEMP dirs)
+# tmp_dir =  /tmp
+
 [formulas]
 # URL of the remote formula repository.
 # Supports git repos (ending in .git or hosted on github/gitlab/bitbucket)
