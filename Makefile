@@ -1,5 +1,5 @@
 DIST  = dist
-PYZ   = $(DIST)/seth.pyz
+PYZ   = $(DIST)/seth
 STAGE = $(DIST)/_stage
 SRCS  = $(shell find seth -name "*.py")
 
