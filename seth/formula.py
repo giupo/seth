@@ -40,6 +40,9 @@ class Formula:
     build_system: str = "autoconf"
     extra_configure_args: list[str] = []
     versions: dict = {}
+    # Ordered list of .patch filenames (unified diff, applied with patch -p1).
+    # Files are searched in patch_dirs/<formula_name>/ (see config).
+    patches: list[str] = []
 
     # Populated per-instance by load_formula
     version: str = ""
@@ -58,6 +61,9 @@ class Formula:
 
     def meson_args(self) -> list[str]:
         return [f"--prefix={self.keg}"] + self.extra_configure_args
+
+    def patch(self, source_dir: Path):
+        """Override for programmatic source modifications applied before build."""
 
     def post_install(self):
         pass
@@ -135,6 +141,17 @@ def available_versions(name: str) -> list[str]:
     module = _load_module(name, path)
     base_cls = _find_base_class(module)
     return sorted(base_cls.versions.keys(), reverse=True)
+
+
+def _find_patch_file(formula_name: str, patch_file: str) -> Path:
+    for d in config.patch_dirs:
+        p = d / formula_name / patch_file
+        if p.exists():
+            return p
+    searched = " → ".join(str(d / formula_name) for d in config.patch_dirs)
+    raise FileNotFoundError(
+        f"Patch '{patch_file}' not found for '{formula_name}' (searched: {searched})"
+    )
 
 
 def list_available() -> list[str]:

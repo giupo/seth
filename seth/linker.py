@@ -7,12 +7,21 @@ from pathlib import Path
 from .config import config
 from .formula import Formula
 
+# Files that must not be symlinked because they are shared aggregate indexes
+# written by multiple packages (e.g. install-info writes share/info/dir for
+# every package that ships texinfo pages — it cannot be a per-keg symlink).
+_SKIP_LINK = frozenset([
+    "share/info/dir",
+])
+
 
 def _iter_keg_files(keg: Path):
-    """Yield (keg_file, relative_path) for every file in the keg."""
+    """Yield (keg_file, relative_path) for every non-aggregate file in the keg."""
     for f in keg.rglob("*"):
         if f.is_file() or f.is_symlink():
-            yield f, f.relative_to(keg)
+            rel = f.relative_to(keg)
+            if str(rel) not in _SKIP_LINK:
+                yield f, rel
 
 
 def link(formula: Formula, force: bool = False):
@@ -47,7 +56,8 @@ def link(formula: Formula, force: bool = False):
         target.symlink_to(keg_file)
         linked += 1
 
-    print(f"==> Linked {linked} files into {root}")
+    from . import colors as col
+    print(col.header(f"Linked {col.cyan(str(linked))} files into {col.dim(str(root))}"))
 
 
 def unlink(formula: Formula):
@@ -62,7 +72,8 @@ def unlink(formula: Formula):
             removed += 1
             _rmdir_if_empty(target.parent, root)
 
-    print(f"==> Unlinked {removed} files from {root}")
+    from . import colors as col
+    print(col.header(f"Unlinked {col.cyan(str(removed))} files from {col.dim(str(root))}"))
 
 
 def _rmdir_if_empty(directory: Path, stop_at: Path):

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 _DEFAULT_ROOT = Path.home() / ".local" / "seth"
+# When running from a .pyz this path resolves inside the zip (not a real dir).
 _BUNDLED_FORMULAS = Path(__file__).parent.parent / "formulas"
 
 
@@ -36,13 +37,20 @@ class _Config:
             cfg.get("formulas", "url", fallback=""),
         )
 
-        # Search order: explicit override → remote cache → bundled.
+        # Search order: explicit override → remote cache → bundled (dev only).
         # If an explicit path is given, use only that.
+        # _BUNDLED_FORMULAS is only added when it is a real directory on disk;
+        # when running from a .pyz it resolves inside the zip and is_dir() → False.
         explicit = os.environ.get("SETH_FORMULAS") or cfg.get("paths", "formulas", fallback="")
         if explicit:
             self.formula_search_dirs = [Path(explicit)]
         else:
-            self.formula_search_dirs = [self.remote_formulas_dir, _BUNDLED_FORMULAS]
+            self.formula_search_dirs = [self.remote_formulas_dir]
+            if _BUNDLED_FORMULAS.is_dir():
+                self.formula_search_dirs.append(_BUNDLED_FORMULAS)
+
+        # Patch dirs mirror formula dirs: patches/<formula>/<file>.patch
+        self.patch_dirs = [d.parent / "patches" for d in self.formula_search_dirs]
 
     def ensure_dirs(self):
         for d in (self.cellar, self.downloads, self.db_path.parent):

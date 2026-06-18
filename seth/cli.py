@@ -8,7 +8,7 @@ import shutil
 import sys
 
 from . import __version__
-from . import cellar, linker
+from . import cellar, colors as col, linker
 from .builder import install as builder_install
 from .config import config
 from .formula import available_versions, list_available, load_formula
@@ -24,30 +24,57 @@ def _parse_pkg(spec: str) -> tuple[str, str | None]:
 
 # ── install helpers ───────────────────────────────────────────────────────────
 
-def _filter_plan(plan: list[PlannedStep], force: bool) -> list[PlannedStep]:
-    """Return only the steps that actually need to run."""
+def _filter_plan(plan: list[PlannedStep], force: bool, link: bool = True) -> list[PlannedStep]:
+    """Return steps that still need work.
+
+    A step is needed when:
+    - force=True (always rebuild+relink), OR
+    - the package is not installed (needs build+link), OR
+    - the package is installed but the correct version is not linked in root
+      (needs at least re-link; this happens e.g. after a failed link on a
+      previous run, or after --no-link was used)
+
+    When link=False (--no-link) the third condition is skipped because the
+    caller does not intend to link anything.
+    """
     return [
         step for step in plan
-        if force or not cellar.is_installed(step.formula.name, step.formula.version)
+        if force
+        or not cellar.is_installed(step.formula.name, step.formula.version)
+        or (link and cellar.linked_version(step.formula.name) != step.formula.version)
     ]
 
 
 def _print_plan(steps: list[PlannedStep], target_name: str):
     deps = [s for s in steps if s.formula.name != target_name]
     if deps:
-        print(f"==> Dependencies:")
+        print(col.header("Dependencies:"))
         for s in deps:
-            print(f"    {s}")
+            f = s.formula
+            suffix = col.dim(col.yellow("  (build only)")) if s.build_only else ""
+            print(f"    {col.pkg(f.name, f.version)}{suffix}")
 
 
 def _execute_plan(steps: list[PlannedStep], link: bool, force: bool, debug: bool = False):
     config.ensure_dirs()
     for step in steps:
-        builder_install(step.formula, debug=debug)
-        cellar.record_install(step.formula.name, step.formula.version, step.formula.keg)
+        f = step.formula
+        # If the keg was already built (e.g. a previous run built it but then
+        # failed during linking), skip the expensive build and go straight to
+        # (re-)linking.
+        already_built = (
+            not force
+            and cellar.is_installed(f.name, f.version)
+            and f.keg.exists()
+        )
+        if not already_built:
+            builder_install(f, debug=debug)
+            cellar.record_install(f.name, f.version, f.keg)
+        elif link:
+            print(col.header(f"Relinking {col.pkg(f.name, f.version)}"))
         if link:
-            linker.link(step.formula, force=force)
-            cellar.record_link(step.formula.name, step.formula.version)
+            linker.link(f, force=force)
+            cellar.record_link(f.name, f.version)
 
 
 # ── commands ──────────────────────────────────────────────────────────────────
@@ -57,15 +84,18 @@ def cmd_install(args):
         name, version = _parse_pkg(spec)
         formula = load_formula(name, version)
         plan = build_install_plan(formula)
-        steps = _filter_plan(plan, args.force)
+        link = not args.no_link
+        steps = _filter_plan(plan, args.force, link=link)
 
         if not steps:
-            print(f"seth: {formula.name} {formula.version} already installed"
-                  f" (use --force to reinstall)")
+            print(
+                f"seth: {col.pkg(formula.name, formula.version)} already installed"
+                f" {col.dim('(use --force to reinstall)')}"
+            )
             continue
 
         _print_plan(steps, formula.name)
-        _execute_plan(steps, link=not args.no_link, force=args.force, debug=args.debug)
+        _execute_plan(steps, link=link, force=args.force, debug=args.debug)
 
 
 def cmd_uninstall(args):
@@ -92,7 +122,7 @@ def cmd_uninstall(args):
             keg = config.cellar / name / ver
             if keg.exists():
                 shutil.rmtree(keg)
-                print(f"==> Removed {keg}")
+                print(col.header(f"Removed {col.dim(str(keg))}"))
                 try:
                     keg.parent.rmdir()
                 except OSError:
@@ -103,37 +133,47 @@ def cmd_uninstall(args):
 def cmd_list(args):
     installed = cellar.list_installed()
     if not installed:
-        print("No packages installed.")
+        print(col.dim("No packages installed."))
         return
     for name, info in sorted(installed.items()):
         linked = info.get("linked")
         for ver in sorted(info["versions"], reverse=True):
-            marker = " (linked)" if ver == linked else ""
-            print(f"  {name} {ver}{marker}")
+            if ver == linked:
+                marker = "  " + col.b_green("✓ linked")
+            else:
+                marker = ""
+            print(f"  {col.pkg(name, ver)}{marker}")
 
 
 def cmd_info(args):
     name, version = _parse_pkg(args.package)
     formula = load_formula(name, version)
-    info = cellar.get_info(name)
 
     all_vers = available_versions(name)
     linked = cellar.linked_version(name)
     inst_vers = cellar.installed_versions(name)
 
-    print(f"Name:          {formula.name}")
-    print(f"Latest:        {formula.latest or formula.version}")
-    print(f"Available:     {', '.join(all_vers) if all_vers else formula.version}")
-    print(f"Build system:  {formula.build_system}")
+    def field(label: str, value: str):
+        # Pad the plain label first, then apply bold so ANSI codes don't skew width.
+        padded = f"{label + ':':<14}"
+        print(f"  {col.bold(padded)}  {value}")
+
+    print(col.header(col.pkg(formula.name, formula.version)))
+    field("Latest",       col.cyan(formula.latest or formula.version))
+    field("Available",    "  ".join(col.cyan(v) for v in all_vers) if all_vers else col.cyan(formula.version))
+    field("Build system", formula.build_system)
     if formula.dependencies:
-        print(f"Dependencies:  {', '.join(formula.dependencies)}")
+        field("Dependencies", "  ".join(col.bold(d) for d in formula.dependencies))
     if formula.build_dependencies:
-        print(f"Build deps:    {', '.join(formula.build_dependencies)}")
+        field("Build deps",   "  ".join(col.dim(d) for d in formula.build_dependencies))
     if inst_vers:
-        print(f"Installed:     {', '.join(sorted(inst_vers, reverse=True))}")
-        print(f"Linked:        {linked or 'none'}")
+        inst_str = "  ".join(
+            (col.b_green(v + " ✓") if v == linked else col.cyan(v))
+            for v in sorted(inst_vers, reverse=True)
+        )
+        field("Installed", inst_str)
     else:
-        print("Installed:     no")
+        field("Installed", col.dim("no"))
 
 
 def cmd_link(args):
@@ -177,9 +217,13 @@ def cmd_upgrade(args):
             print(f"seth: {name} {formula.version} already up-to-date")
             continue
 
-        print(f"==> Upgrading {name}: {current or '—'} → {formula.version}")
+        arrow = col.cyan("→")
+        print(col.header(
+            f"Upgrading {col.bold(name)}: "
+            f"{col.dim(current or '—')} {arrow} {col.cyan(formula.version)}"
+        ))
         plan = build_install_plan(formula)
-        steps = _filter_plan(plan, args.force)
+        steps = _filter_plan(plan, args.force, link=True)
 
         if current:
             linker.unlink(load_formula(name, current))
@@ -192,40 +236,196 @@ def cmd_update(args):
 
 
 def cmd_edit(args):
+    import subprocess
+    import tempfile
     from .formula import _find_formula_file
-    path = _find_formula_file(args.formula)
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
-    os.execvp(editor, [editor, str(path)])
+    try:
+        path = _find_formula_file(args.formula)
+        os.execvp(editor, [editor, str(path)])
+    except FileNotFoundError:
+        # New formula: open a temp file pre-filled with the template.
+        # Only write to the real path if the user saves changes.
+        template = _formula_template(args.formula)
+        dest = _new_formula_path(args.formula)
+        print(col.header(f"New formula: {col.dim(str(dest))}"))
+        with tempfile.NamedTemporaryFile(
+            suffix=".py", prefix=f"seth.{args.formula}.", mode="w", delete=False
+        ) as tmp:
+            tmp.write(template)
+            tmp_path = Path(tmp.name)
+        try:
+            subprocess.run([editor, str(tmp_path)], check=False)
+            content = tmp_path.read_text()
+            if content != template:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content)
+                print(col.header(f"Saved {col.dim(str(dest))}"))
+            else:
+                print(col.dim("(no changes — formula not saved)"))
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+
+def _new_formula_path(name: str) -> Path:
+    # Write new formulas to the last search dir (bundled/local), not the remote cache.
+    return config.formula_search_dirs[-1] / f"{name}.py"
+
+
+def _formula_template(name: str) -> str:
+    class_name = "".join(part.capitalize() for part in name.replace("-", "_").split("_"))
+    return f'''\
+from seth.formula import Formula
+
+
+class {class_name}Formula(Formula):
+    name = "{name}"
+    latest = "0.0.0"
+    # dependencies = []
+    # build_dependencies = []
+
+    versions = {{
+        "0.0.0": {{
+            "url": "https://example.com/{name}-0.0.0.tar.gz",
+            "sha256": "",
+        }},
+    }}
+
+    # def configure_args(self):
+    #     return [
+    #         f"--prefix={{self.keg}}",
+    #         "--enable-shared",
+    #     ]
+'''
+
+
+def cmd_init(args):
+    import configparser
+
+    config_path = Path(
+        os.environ.get("SETH_CONFIG",
+                       Path.home() / ".config" / "seth" / "seth.conf")
+    )
+
+    def _ask_path(label: str, default: Path) -> Path:
+        padded = f"{label}:"
+        prompt = f"  {col.bold(f'{padded:<22}')} [{col.cyan(str(default))}] "
+        try:
+            val = input(prompt).strip()
+        except EOFError:
+            val = ""
+        return Path(val).expanduser() if val else default
+
+    def _ask_str(label: str, default: str) -> str:
+        padded = f"{label}:"
+        hint = col.cyan(default) if default else col.dim("(leave empty to skip)")
+        prompt = f"  {col.bold(f'{padded:<22}')} [{hint}] "
+        try:
+            val = input(prompt).strip()
+        except EOFError:
+            val = ""
+        return val if val else default
+
+    if config_path.exists() and not args.force:
+        print(col.header("seth is already configured"))
+        print(f"  {col.dim(str(config_path))}")
+        print()
+        try:
+            answer = input(f"  Overwrite? [{col.yellow('y/N')}] ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in ("y", "yes"):
+            print(col.dim("  Cancelled."))
+            return
+        print()
+
+    print(col.header("seth initialization"))
+    print(col.dim(f"  Config file: {config_path}"))
+    print(col.dim("  Press Enter to accept the default shown in [brackets]."))
+    print()
+
+    default_root = Path.home() / ".local" / "seth"
+    root = _ask_path("Root prefix", default_root)
+    cellar = _ask_path("Cellar", root / "Cellar")
+    formulas_url = _ask_str("Remote formulas URL", "")
+
+    print()
+
+    cfg = configparser.ConfigParser()
+    cfg["paths"] = {"root": str(root)}
+    if cellar != root / "Cellar":
+        cfg["paths"]["cellar"] = str(cellar)
+    if formulas_url:
+        cfg["formulas"] = {"url": formulas_url}
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        cfg.write(f)
+
+    for d in (root, cellar, root / "bin", root / "lib", root / "include"):
+        d.mkdir(parents=True, exist_ok=True)
+
+    print(col.header(f"Written {col.dim(str(config_path))}"))
+
+    def field(label: str, value: str):
+        padded = f"{label + ':':<14}"
+        print(f"  {col.bold(padded)}  {value}")
+
+    field("root",   col.cyan(str(root)))
+    field("cellar", col.dim(str(cellar)))
+    if formulas_url:
+        field("formulas", col.cyan(formulas_url))
+
+    if formulas_url:
+        print()
+        try:
+            answer = input(f"  Download formulas now? [{col.cyan('Y/n')}] ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in ("n", "no"):
+            from .updater import update as do_update
+            config.__init__()   # re-read the file we just wrote
+            do_update()
+
+    print()
+    print(col.dim("  Add seth to your shell environment:"))
+    print(col.dim('    eval "$(seth env)"'))
 
 
 def cmd_search(args):
     term = args.term.lower()
     matches = [n for n in list_available() if term in n]
     if not matches:
-        print(f"No formulas matching '{args.term}'")
+        print(col.dim(f"No formulas matching '{args.term}'"))
         return
     for m in matches:
         inst = cellar.linked_version(m)
-        marker = f" [installed: {inst}]" if inst else ""
-        print(f"  {m}{marker}")
+        marker = f"  {col.b_green('✓ ' + inst)}" if inst else ""
+        print(f"  {col.bold(m)}{marker}")
 
 
 def cmd_available(args):
     for name in list_available():
         inst = cellar.linked_version(name)
-        marker = f" [installed: {inst}]" if inst else ""
-        print(f"  {name}{marker}")
+        marker = f"  {col.b_green('✓ ' + inst)}" if inst else ""
+        print(f"  {col.bold(name)}{marker}")
 
 
 def cmd_config(args):
-    print(f"root:          {config.root}")
-    print(f"cellar:        {config.cellar}")
-    print(f"formulas (search order):")
+    def field(label: str, value: str):
+        padded = f"{label + ':':<14}"
+        print(f"  {col.bold(padded)}  {value}")
+
+    print(col.header("seth configuration"))
+    field("root",         col.cyan(str(config.root)))
+    field("cellar",       col.dim(str(config.cellar)))
+    field("formulas_url", col.cyan(config.formulas_url) if config.formulas_url
+                          else col.dim("(not configured)"))
+    field("db",           col.dim(str(config.db_path)))
+    print(f"  {col.bold('formulas:')}")
     for d in config.formula_search_dirs:
-        tag = " [remote cache]" if d == config.remote_formulas_dir else ""
-        print(f"               {d}{tag}")
-    print(f"formulas_url:  {config.formulas_url or '(not configured)'}")
-    print(f"db:            {config.db_path}")
+        suffix = f"  {col.dim('[remote cache]')}" if d == config.remote_formulas_dir else ""
+        print(f"    {col.dim(str(d))}{suffix}")
 
 
 def cmd_env(args):
@@ -244,8 +444,8 @@ def cmd_env(args):
         ("ACLOCAL_PATH",    [root / "share" / "aclocal"]),
     ]
 
-    print(f"# seth environment — root: {root}")
-    print(f'# To apply: eval "$(seth env)"')
+    print(col.dim(f"# seth environment — root: {root}"))
+    print(col.dim('# To apply: eval "$(seth env)"'))
     print()
     for var, dirs in entries:
         paths = ":".join(str(d) for d in dirs)
@@ -308,6 +508,10 @@ def main():
     p = sub.add_parser("available", help="List all available formulas")
     p.set_defaults(func=cmd_available)
 
+    p = sub.add_parser("init", help="Interactive first-time setup: write config and create directories")
+    p.add_argument("--force", action="store_true", help="Overwrite existing config without prompting")
+    p.set_defaults(func=cmd_init)
+
     p = sub.add_parser("config", help="Show current configuration")
     p.set_defaults(func=cmd_config)
 
@@ -322,8 +526,8 @@ def main():
     try:
         args.func(args)
     except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as e:
-        print(f"seth: error: {e}", file=sys.stderr)
+        print(f"{col.b_red('seth: error:')} {e}", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\nseth: interrupted", file=sys.stderr)
+        print(f"\n{col.yellow('seth: interrupted')}", file=sys.stderr)
         sys.exit(130)

@@ -4,7 +4,7 @@ from seth.formula import Formula
 class CurlFormula(Formula):
     name = "curl"
     latest = "8.20.0"
-    dependencies = ["openssl>=3.0", "zlib>=1.2"]
+    dependencies = ["openssl>=3.0", "zlib>=1.2", "perl"]
     build_dependencies = ["pkgconfig"]
 
     versions = {

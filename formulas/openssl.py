@@ -1,6 +1,7 @@
 import os
 import subprocess
 
+from seth import colors as col
 from seth.formula import Formula
 
 
@@ -8,7 +9,7 @@ class OpenSSLFormula(Formula):
     name = "openssl"
     latest = "3.3.2"
     build_system = "custom"
-    depeendencies = ["zlib", "perl"]
+    dependencies = ["zlib", "perl"]
     versions = {
         "3.3.2": {
             "url": "https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz",
@@ -31,11 +32,12 @@ class OpenSSLFormula(Formula):
         env = get_build_env()
 
         def run(cmd):
-            print(f"  [run] {' '.join(str(c) for c in cmd)}")
-            print(f"        (cwd: {source_dir})")
+            cmd_str = " ".join(str(c) for c in cmd)
+            print(f"  {col.tag('run')}{col.dim(cmd_str)}")
+            print(f"  {' ' * 11}{col.dim(f'(cwd: {source_dir})')}")
             r = subprocess.run(cmd, cwd=source_dir, env=env)
             if r.returncode != 0:
-                raise RuntimeError(f"Command failed: {' '.join(str(c) for c in cmd)}")
+                raise RuntimeError(f"Command failed: {cmd_str}")
 
         run([
             "./Configure",

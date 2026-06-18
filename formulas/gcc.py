@@ -1,6 +1,7 @@
 import os
 import subprocess
 
+from seth import colors as col
 from seth.formula import Formula
 
 
@@ -51,12 +52,13 @@ class GccFormula(Formula):
         ]
 
         def run(cmd, cwd=build_dir):
-            print(f"  [run] {' '.join(str(c) for c in cmd)}")
-            print(f"        (cwd: {cwd})")
+            cmd_str = " ".join(str(c) for c in cmd)
+            print(f"  {col.tag('run')}{col.dim(cmd_str)}")
+            print(f"  {' ' * 11}{col.dim(f'(cwd: {cwd})')}")
             r = subprocess.run(cmd, cwd=cwd, env=env)
             if r.returncode != 0:
                 raise RuntimeError(
-                    f"Command failed (exit {r.returncode}): {' '.join(str(c) for c in cmd)}"
+                    f"Command failed (exit {r.returncode}): {cmd_str}"
                 )
 
         run([str(source_dir / "configure")] + configure_args)

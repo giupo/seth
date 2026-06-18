@@ -2,7 +2,7 @@
 name = "seth"
 version = "0.1.0"
 description = "A source-based package manager for Linux (Osiride platform)"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]

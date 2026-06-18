@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from seth.formula import Formula
 
 
@@ -17,3 +19,17 @@ class PkgConfigFormula(Formula):
             f"--prefix={self.keg}",
             "--with-internal-glib",
         ]
+
+    def patch(self, source_dir: Path):
+        # glib/goption.c uses 'bool' as a variable name and struct member, which
+        # conflicts with the C99 keyword introduced via <stdbool.h>.  Rename to
+        # '_bool' throughout that file so it compiles cleanly with gcc >= 8.
+        goption = source_dir / "glib" / "goption.c"
+        if not goption.exists():
+            return
+        text = goption.read_text()
+        text = (text
+                .replace("gboolean bool;",   "gboolean _bool;")
+                .replace("->prev.bool",       "->prev._bool")
+                .replace(".prev.bool",        ".prev._bool"))
+        goption.write_text(text)
