@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stamp version from tag
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          sed -i "s/__version__ = .*/__version__ = \"${VERSION}\"/" seth/__init__.py
+
+      - name: Build .pyz
+        run: make pyz
+
+      - name: Rename artifact with version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          cp dist/seth.pyz dist/seth-${VERSION}.pyz
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/seth-*.pyz
+          generate_release_notes: true

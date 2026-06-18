@@ -1,7 +1,7 @@
 # seth
 
 A source-based package manager for Linux, inspired by Homebrew.  
-Designed for environments where you need up-to-date software without root access — tested on RHEL 8 / Osiride.
+Designed for environments where you need up-to-date software without root access — tested on RHEL 8.
 
 ---
 
