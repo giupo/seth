@@ -449,6 +449,7 @@ def cmd_env(args):
         ("LIBRARY_PATH",    [root / "lib", root / "lib64"]),
         ("CPATH",           [root / "include"]),
         ("PKG_CONFIG_PATH", [root / "lib" / "pkgconfig",
+                             root / "lib64" / "pkgconfig",
                              root / "share" / "pkgconfig"]),
         ("MANPATH",         [root / "share" / "man"]),
         ("ACLOCAL_PATH",    [root / "share" / "aclocal"]),
