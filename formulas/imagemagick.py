@@ -3,18 +3,14 @@ from seth.formula import Formula
 
 class ImagemagickFormula(Formula):
     name = "imagemagick"
-    latest = "7.1.1-47"
+    latest = "7.1.2-25"
     dependencies = ["zlib"]
     build_dependencies = ["pkgconfig"]
 
     versions = {
         "7.1.1-47": {
-            "url": "https://imagemagick.org/archive/ImageMagick-7.1.1-47.tar.gz",
-            "sha256": "",  # sha256sum ImageMagick-7.1.1-47.tar.gz
-        },
-        "7.1.1-38": {
-            "url": "https://imagemagick.org/archive/ImageMagick-7.1.1-38.tar.gz",
-            "sha256": "",
+            "url": "https://imagemagick.org/archive/ImageMagick-7.1.2-25.tar.gz",
+            "sha256": "c4ce2d982fbedf0347aeca804326308311d767c8da6a69e91ed39371f8de137b"
         },
     }
 

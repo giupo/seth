@@ -239,30 +239,10 @@ def patch(self, source_dir):
 
 ## Available formulas
 
-| Package | Latest | Dependencies |
-|---|---|---|
-| curl | 8.20.0 | openssl, zlib, perl, pkgconfig |
-| emacs | — | ncurses, libxml2, gnutls |
-| gcc | 16.1.0 | gmp, mpfr, mpc, zlib |
-| gmp | 6.3.0 | — |
-| gnutls | 3.8.8 | nettle, libtasn1, gmp |
-| imagemagick | 7.1.1-47 | zlib |
-| libevent | 2.1.12 | openssl |
-| libssh2 | 1.11.1 | openssl, zlib |
-| libtasn1 | 4.19.0 | — |
-| libxml2 | 2.12.9 | zlib |
-| mpc | 1.3.1 | gmp, mpfr |
-| mpfr | 4.2.2 | gmp |
-| ncurses | 6.5 | — |
-| nettle | 3.9.1 | gmp |
-| openssl | 3.3.2 | zlib, perl |
-| perl | — | zlib |
-| pkgconfig | 0.29.2 | — |
-| tmux | 3.5a | libevent, ncurses |
-| wget | 1.21.4 | openssl |
-| zlib | 1.3.2 | — |
+Theres the following repo where we release formulas:
 
----
+  https://github.com/giupo/seth-formulas
+
 
 ## Single-file executable
 
