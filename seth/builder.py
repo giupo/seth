@@ -157,7 +157,7 @@ def build(formula: Formula, source_dir: Path):
         _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
         _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
 
-    elif system == BuildType.CMAKE:
+    elif system == BuildType.MAKE:
         # No configure step: bare Makefile projects (e.g. bzip2) that take
         # their settings (PREFIX, CC, ...) as make variables instead.
         _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
