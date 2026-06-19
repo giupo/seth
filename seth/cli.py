@@ -293,7 +293,7 @@ class {class_name}Formula(Formula):
     # dependencies = []
     # build_dependencies = []
     # build_system = BuildType.AUTOCONF
-    
+
     versions = {{
         "0.0.0": {{
             "url": "https://example.com/{name}-0.0.0.tar.gz",
