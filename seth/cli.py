@@ -284,14 +284,16 @@ def _formula_template(name: str) -> str:
     class_name = "".join(part.capitalize() for part in name.replace("-", "_").split("_"))
     return f'''\
 from seth.formula import Formula
-
+from seth.types import BuildType
 
 class {class_name}Formula(Formula):
     name = "{name}"
     latest = "0.0.0"
+
     # dependencies = []
     # build_dependencies = []
-
+    # build_system = BuildType.AUTOCONF
+    
     versions = {{
         "0.0.0": {{
             "url": "https://example.com/{name}-0.0.0.tar.gz",
@@ -304,6 +306,26 @@ class {class_name}Formula(Formula):
     #         f"--prefix={{self.keg}}",
     #         "--enable-shared",
     #     ]
+
+    # def configure_args(self) -> list[str]:
+    #    return [f"--prefix={{self.keg}}"] + self.extra_configure_args
+
+    # def make_args(self) -> list[str]:
+    #    """Variables/flags appended to every `make` invocation (e.g. CFLAGS=-O2)."""
+    #     return self.extra_make_args
+
+    # def cmake_args(self) -> list[str]:
+    #    return [f"-DCMAKE_INSTALL_PREFIX={{self.keg}}"] + self.extra_configure_args
+
+    # def meson_args(self) -> list[str]:
+    #    return [f"--prefix={{self.keg}}"] + self.extra_configure_args
+
+    # def patch(self, source_dir: Path):
+    #     """Override for programmatic source modifications applied before build."""
+
+    # def post_install(self):
+    #     pass
+
 '''
 
 
@@ -447,6 +469,14 @@ def cmd_config(args):
         print(f"    {col.dim(str(d))}{suffix}")
 
 
+def cmd_purge(args):
+    print(f"  {col.bold('Delete downloads')}")
+    for item in config.downloads.iterdir():
+        if item.is_file():
+            item.unlink()
+
+
+        
 def cmd_env(args):
     root = config.root
 
@@ -541,6 +571,9 @@ def main():
     p = sub.add_parser("edit", help="Open a formula in $EDITOR")
     p.add_argument("formula", metavar="formula")
     p.set_defaults(func=cmd_edit)
+
+    p = sub.add_parser("purge", help="Remove all downloaded tarballs")
+    p.set_defaults(func=cmd_purge)
 
     args = parser.parse_args()
     try:

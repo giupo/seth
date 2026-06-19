@@ -19,6 +19,9 @@ Multiple versions are declared in the `versions` dict:
         def configure_args(self):   # default for all versions
             return [f"--prefix={self.keg}", "--with-ssl=openssl"]
 
+        # variables appended to every `make` invocation, e.g. make CFLAGS=-O2
+        extra_make_args = ["CFLAGS=-O2"]
+
 load_formula("wget")          → latest version
 load_formula("wget", "1.21.3") → specific version
 """
@@ -29,6 +32,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from .types import BuildType
 from .config import config
 
 
@@ -37,8 +41,9 @@ class Formula:
     latest: str = ""
     dependencies: list[str] = []
     build_dependencies: list[str] = []   # needed only at build time, not at runtime
-    build_system: str = "autoconf"
+    build_system: BuildType | str = BuildType.AUTOCONF
     extra_configure_args: list[str] = []
+    extra_make_args: list[str] = []
     versions: dict = {}
     # Ordered list of .patch filenames (unified diff, applied with patch -p1).
     # Files are searched in patch_dirs/<formula_name>/ (see config).
@@ -55,6 +60,10 @@ class Formula:
 
     def configure_args(self) -> list[str]:
         return [f"--prefix={self.keg}"] + self.extra_configure_args
+
+    def make_args(self) -> list[str]:
+        """Variables/flags appended to every `make` invocation (e.g. CFLAGS=-O2)."""
+        return self.extra_make_args
 
     def cmake_args(self) -> list[str]:
         return [f"-DCMAKE_INSTALL_PREFIX={self.keg}"] + self.extra_configure_args

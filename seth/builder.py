@@ -9,11 +9,14 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.request
+
 from pathlib import Path
+from enum import StrEnum
 
 from . import colors as col
 from .config import config
 from .formula import Formula
+from .types import BuildType
 
 
 # ── build environment ─────────────────────────────────────────────────────────
@@ -104,7 +107,8 @@ def extract(archive: Path, build_dir: Path) -> Path:
             entries = list(build_dir.iterdir())
             if len(entries) == 1 and entries[0].is_dir():
                 return entries[0]
-    except Exception:
+    except Exception as e:
+        print(f"  {col.tag('error')} {e}")
         print(f"  {col.tag('warn')} can't decompress {archive}, assume it's a file ...")
         shutil.copy2(archive, build_dir)
 
@@ -142,26 +146,38 @@ def build(formula: Formula, source_dir: Path):
     system = formula.build_system
     apply_patches(formula, source_dir)
 
-    if system == "autoconf":
+    if system == BuildType.AUTOGEN:
+        _run(["./autogen.sh"], cwd=source_dir, env=env)
         _run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
-        _run(["make", f"-j{_nproc()}"], cwd=source_dir, env=env)
-        _run(["make", "install"], cwd=source_dir, env=env)
+        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
+        _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
+    
+    elif system == BuildType.AUTOCONF:
+        _run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
+        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
+        _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
 
-    elif system == "cmake":
+    elif system == BuildType.CMAKE:
+        # No configure step: bare Makefile projects (e.g. bzip2) that take
+        # their settings (PREFIX, CC, ...) as make variables instead.
+        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
+        _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
+
+    elif system == BuildType.CMAKE:
         build_subdir = source_dir / "_build"
         build_subdir.mkdir(exist_ok=True)
         _run(["cmake", ".."] + formula.cmake_args(), cwd=build_subdir, env=env)
-        _run(["make", f"-j{_nproc()}"], cwd=build_subdir, env=env)
-        _run(["make", "install"], cwd=build_subdir, env=env)
+        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=build_subdir, env=env)
+        _run(["make", "install"] + formula.make_args(), cwd=build_subdir, env=env)
 
-    elif system == "meson":
+    elif system == BuildType.MESON:
         build_subdir = source_dir / "_build"
         _run(["meson", "setup", str(build_subdir)] + formula.meson_args(),
              cwd=source_dir, env=env)
         _run(["ninja", "-C", str(build_subdir)], cwd=source_dir, env=env)
         _run(["ninja", "-C", str(build_subdir), "install"], cwd=source_dir, env=env)
 
-    elif system == "custom":
+    elif system == BuildType.CUSTOM:
         formula.build(source_dir)
 
     else:
