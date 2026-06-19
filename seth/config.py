@@ -8,6 +8,11 @@ _BUNDLED_FORMULAS = Path(__file__).parent.parent / "formulas"
 
 
 class _Config:
+    """Resolves seth's paths and settings from env vars, then the config file,
+    then built-in defaults (in that precedence). Instantiated once as the
+    module-level `config` singleton below.
+    """
+
     def __init__(self):
         cfg = configparser.ConfigParser()
         config_file = Path(

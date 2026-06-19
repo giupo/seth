@@ -64,6 +64,7 @@ def get_build_env() -> dict[str, str]:
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _sha256(path: Path) -> str:
+    """Compute the sha256 hex digest of a file, streaming it in 64KB chunks."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
@@ -72,6 +73,7 @@ def _sha256(path: Path) -> str:
 
 
 def download(formula: Formula) -> Path:
+    """Download formula.url into config.downloads, reusing an existing copy."""
     config.downloads.mkdir(parents=True, exist_ok=True)
     filename = formula.url.split("/")[-1]
     dest = config.downloads / filename
@@ -84,6 +86,10 @@ def download(formula: Formula) -> Path:
 
 
 def verify(archive: Path, expected_sha256: str):
+    """Raise ValueError if archive's sha256 doesn't match expected_sha256.
+
+    An empty expected_sha256 only prints a warning (legacy formulas without one).
+    """
     if not expected_sha256:
         print(f"  {col.tag('warn')}{col.yellow('no sha256 specified, skipping checksum')}")
         return
@@ -98,6 +104,12 @@ def verify(archive: Path, expected_sha256: str):
 
 
 def extract(archive: Path, build_dir: Path) -> Path:
+    """Extract archive into build_dir, returning the resulting source directory.
+
+    If the tarball contains a single top-level directory (the common case),
+    that directory is returned. If it isn't a tarball at all, the archive is
+    copied as-is into build_dir (e.g. formulas that ship a raw script).
+    """
     print(f"  {col.tag('extract')}{archive.name}")
     build_dir.mkdir(parents=True, exist_ok=True)
 
@@ -117,6 +129,7 @@ def extract(archive: Path, build_dir: Path) -> Path:
 
 
 def _run(cmd: list[str], cwd: Path, env: dict | None = None):
+    """Run cmd in cwd, defaulting to get_build_env(); raise on non-zero exit."""
     if env is None:
         env = get_build_env()
     cmd_str = " ".join(str(c) for c in cmd)
@@ -130,6 +143,8 @@ def _run(cmd: list[str], cwd: Path, env: dict | None = None):
 
 
 def apply_patches(formula: Formula, source_dir: Path):
+    """Apply formula.patches (unified diffs via `patch -p1`), then formula.patch()
+    if the formula overrides it for programmatic source modifications."""
     from .formula import Formula as _Base, _find_patch_file
     for patch_file in formula.patches:
         path = _find_patch_file(formula.name, patch_file)
@@ -141,6 +156,11 @@ def apply_patches(formula: Formula, source_dir: Path):
 
 
 def build(formula: Formula, source_dir: Path):
+    """Apply patches then run formula.build_system's configure/build/install steps.
+
+    See BuildType for what each build system runs. Unknown build_system values
+    raise ValueError.
+    """
     formula.keg.mkdir(parents=True, exist_ok=True)
     env = get_build_env()
     system = formula.build_system
@@ -185,6 +205,7 @@ def build(formula: Formula, source_dir: Path):
 
 
 def _build_tmpdir(formula: Formula) -> Path:
+    """Create a fresh temp directory for this formula's build, under config.tmp_dir."""
     return Path(
         tempfile.mkdtemp(
             prefix=f"seth.{formula.name}.{formula.version}.",

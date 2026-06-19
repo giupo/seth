@@ -18,4 +18,8 @@ packages = ["seth", "formulas"]
 [dependency-groups]
 dev = [
     "bump2version>=1.0.1",
+    "pytest>=9.1.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

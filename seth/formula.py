@@ -56,9 +56,11 @@ class Formula:
 
     @property
     def keg(self) -> Path:
+        """Install prefix for this formula's version: <cellar>/<name>/<version>."""
         return config.cellar / self.name / self.version
 
     def configure_args(self) -> list[str]:
+        """Arguments passed to `./configure` (autoconf/autogen build systems)."""
         return [f"--prefix={self.keg}"] + self.extra_configure_args
 
     def make_args(self) -> list[str]:
@@ -66,9 +68,11 @@ class Formula:
         return self.extra_make_args
 
     def cmake_args(self) -> list[str]:
+        """Arguments passed to `cmake` (cmake build system)."""
         return [f"-DCMAKE_INSTALL_PREFIX={self.keg}"] + self.extra_configure_args
 
     def meson_args(self) -> list[str]:
+        """Arguments passed to `meson setup` (meson build system)."""
         return [f"--prefix={self.keg}"] + self.extra_configure_args
 
     def patch(self, source_dir: Path):
