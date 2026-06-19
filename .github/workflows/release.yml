@@ -29,10 +29,10 @@ jobs:
       - name: Rename artifact with version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          cp dist/seth.pyz dist/seth-${VERSION}.pyz
+          cp dist/seth dist/seth-${VERSION}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/seth-*.pyz
+          files: dist/seth-*
           generate_release_notes: true
