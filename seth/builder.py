@@ -211,6 +211,8 @@ def build(formula: Formula, source_dir: Path):
 
 def _build_tmpdir(formula: Formula) -> Path:
     """Create a fresh temp directory for this formula's build, under config.tmp_dir."""
+    # make sure config.tmp_dir exists:
+    Path(config.tmp_dir).mkdir(parents = True, exist_ok = True)
     return Path(
         tempfile.mkdtemp(
             prefix=f"seth.{formula.name}.{formula.version}.",
