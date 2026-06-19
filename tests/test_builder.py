@@ -1,5 +1,6 @@
 import hashlib
 import tarfile
+import zipfile
 
 import pytest
 
@@ -64,6 +65,17 @@ def test_extract_returns_single_top_level_dir(tmp_path):
     archive = tmp_path / "pkg-1.0.tar.gz"
     with tarfile.open(archive, "w:gz") as tf:
         tf.add(src_dir, arcname="pkg-1.0")
+
+    build_dir = tmp_path / "build"
+    result = builder.extract(archive, build_dir)
+    assert result == build_dir / "pkg-1.0"
+    assert (result / "file.txt").exists()
+
+
+def test_extract_zip_returns_single_top_level_dir(tmp_path):
+    archive = tmp_path / "pkg-1.0.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("pkg-1.0/file.txt", "hi")
 
     build_dir = tmp_path / "build"
     result = builder.extract(archive, build_dir)

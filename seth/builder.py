@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.request
+import zipfile
 
 from pathlib import Path
 from enum import StrEnum
@@ -106,25 +107,29 @@ def verify(archive: Path, expected_sha256: str):
 def extract(archive: Path, build_dir: Path) -> Path:
     """Extract archive into build_dir, returning the resulting source directory.
 
-    If the tarball contains a single top-level directory (the common case),
-    that directory is returned. If it isn't a tarball at all, the archive is
+    Supports tarballs (tar, .tar.gz, .tar.bz2, .tar.xz, ...) and .zip archives.
+    If the archive contains a single top-level directory (the common case),
+    that directory is returned. If it's neither a tarball nor a zip, it is
     copied as-is into build_dir (e.g. formulas that ship a raw script).
     """
     print(f"  {col.tag('extract')}{archive.name}")
     build_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        with tarfile.open(archive) as tf:
-            tf.extractall(build_dir, filter="data")
-            entries = list(build_dir.iterdir())
-            if len(entries) == 1 and entries[0].is_dir():
-                return entries[0]
+        if zipfile.is_zipfile(archive):
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(build_dir)
+        else:
+            with tarfile.open(archive) as tf:
+                tf.extractall(build_dir, filter="data")
+        entries = list(build_dir.iterdir())
+        if len(entries) == 1 and entries[0].is_dir():
+            return entries[0]
     except Exception as e:
         print(f"  {col.tag('error')} {e}")
         print(f"  {col.tag('warn')} can't decompress {archive}, assume it's a file ...")
         shutil.copy2(archive, build_dir)
 
-        
     return build_dir
 
 
