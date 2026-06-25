@@ -151,6 +151,12 @@ def resolve_version(spec: DepSpec) -> str:
 class PlannedStep:
     formula: Formula
     build_only: bool = False
+    # Direct dependencies of *this* step, resolved to the exact version chosen
+    # for this install plan: {dep_name: dep_version}. Lets the builder point
+    # each dependency's include/lib/rpath at its specific keg instead of the
+    # shared root prefix, so two consumers in the same plan can depend on
+    # different versions of the same package without conflicting.
+    direct_deps: dict[str, str] = field(default_factory=dict)
 
     def __str__(self) -> str:
         tag = " [build only]" if self.build_only else ""
@@ -164,9 +170,12 @@ def build_install_plan(root: Formula) -> list[PlannedStep]:
     Guarantees:
     - Topological order (each dep appears before its dependents)
     - Cycle detection (raises ValueError with the cycle path)
-    - Constraint checking (raises ValueError on version conflicts)
     - If the same package is needed as both build-only and runtime,
       it is marked as runtime (least restrictive wins)
+    - Different branches may resolve the same dependency to different
+      versions; both are planned and built rather than rejected as a
+      conflict (each step's `direct_deps` records exactly which version
+      it should build/link against).
     """
     plan: list[PlannedStep] = []
     _visit(root, path=[], plan=plan, build_only=False)
@@ -180,15 +189,19 @@ def _visit(
     build_only: bool,
 ) -> None:
     name = formula.name
+    version = formula.version
 
-    # Already in plan → just check constraints and possibly upgrade build→runtime
-    existing = next((s for s in plan if s.formula.name == name), None)
+    # Exact (name, version) already in plan → just possibly upgrade build→runtime
+    existing = next(
+        (s for s in plan if s.formula.name == name and s.formula.version == version),
+        None,
+    )
     if existing:
         if existing.build_only and not build_only:
             existing.build_only = False
         return
 
-    # Cycle detection
+    # Cycle detection (package-level, regardless of version)
     if name in path:
         cycle = " → ".join(path + [name])
         raise ValueError(f"Circular dependency: {cycle}")
@@ -200,24 +213,29 @@ def _visit(
         + [(d, True)  for d in getattr(formula, "build_dependencies", [])]
     )
 
+    direct_deps: dict[str, str] = {}
+
     for dep_str, is_build in all_deps:
         spec = parse_dep(dep_str)
 
-        # If already resolved, verify the selected version satisfies this constraint
-        in_plan = next((s for s in plan if s.formula.name == spec.name), None)
-        if in_plan:
-            if not spec.satisfied_by(in_plan.formula.version):
-                raise ValueError(
-                    f"Version conflict: '{name}' requires {spec}, "
-                    f"but {spec.name} {in_plan.formula.version} was already selected"
-                )
-            if in_plan.build_only and not is_build:
-                in_plan.build_only = False
+        # Reuse an already-planned version of this dependency if it satisfies
+        # the constraint, instead of always resolving fresh. Avoids building
+        # the same package twice when one version happens to satisfy both.
+        compatible = next(
+            (s for s in plan
+             if s.formula.name == spec.name and spec.satisfied_by(s.formula.version)),
+            None,
+        )
+        if compatible:
+            if compatible.build_only and not is_build:
+                compatible.build_only = False
+            direct_deps[spec.name] = compatible.formula.version
             continue
 
         ver = resolve_version(spec)
         from .formula import load_formula
         dep_formula = load_formula(spec.name, ver)
         _visit(dep_formula, new_path, plan, is_build)
+        direct_deps[spec.name] = ver
 
-    plan.append(PlannedStep(formula=formula, build_only=build_only))
+    plan.append(PlannedStep(formula=formula, build_only=build_only, direct_deps=direct_deps))

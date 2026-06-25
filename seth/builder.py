@@ -22,12 +22,22 @@ from .types import BuildType
 
 # ── build environment ─────────────────────────────────────────────────────────
 
-def get_build_env() -> dict[str, str]:
+def get_build_env(direct_deps: dict[str, str] | None = None) -> dict[str, str]:
     """Return a copy of the environment with the seth root paths prepended.
 
     Ensures that packages already installed in the seth root are visible
     to configure scripts, pkg-config, and the compiler during every build.
     Formula custom-build methods should call this instead of os.environ.copy().
+
+    *direct_deps* maps each direct dependency name to the exact version
+    resolved for this install plan ({dep_name: dep_version}, see
+    resolver.PlannedStep.direct_deps). When given, each dependency's own
+    keg is prepended ahead of the root prefix, so configure/compile/link
+    find that specific version even if a different version of the same
+    package is linked into the root prefix (or being built elsewhere in
+    the same plan). The resulting -Wl,-rpath entries point at the
+    dependency's keg directly, so the built binary keeps working at
+    runtime regardless of what gets linked into the root prefix later.
     """
     env = os.environ.copy()
     root = config.root
@@ -58,6 +68,18 @@ def get_build_env() -> dict[str, str]:
                   f"-Wl,-rpath,{root}/lib",
                   f"-Wl,-rpath,{root}/lib64")
     prepend_flags("CPPFLAGS", f"-I{root}/include")
+
+    for dep_name, dep_ver in (direct_deps or {}).items():
+        dep_keg = config.cellar / dep_name / dep_ver
+        prepend_path("PATH",            dep_keg / "bin", dep_keg / "sbin")
+        prepend_path("PKG_CONFIG_PATH", dep_keg / "lib" / "pkgconfig",
+                                        dep_keg / "share" / "pkgconfig")
+        prepend_path("LIBRARY_PATH",    dep_keg / "lib", dep_keg / "lib64")
+        prepend_flags("LDFLAGS",
+                      f"-L{dep_keg}/lib", f"-L{dep_keg}/lib64",
+                      f"-Wl,-rpath,{dep_keg}/lib",
+                      f"-Wl,-rpath,{dep_keg}/lib64")
+        prepend_flags("CPPFLAGS", f"-I{dep_keg}/include")
 
     return env
 
@@ -167,7 +189,7 @@ def build(formula: Formula, source_dir: Path):
     raise ValueError.
     """
     formula.keg.mkdir(parents=True, exist_ok=True)
-    env = get_build_env()
+    env = get_build_env(formula.direct_deps)
     system = formula.build_system
     apply_patches(formula, source_dir)
 
@@ -221,8 +243,15 @@ def _build_tmpdir(formula: Formula) -> Path:
     )
 
 
-def install(formula: Formula, debug: bool = False):
-    """Full pipeline: download → verify → extract → build → post_install."""
+def install(formula: Formula, debug: bool = False, direct_deps: dict[str, str] | None = None):
+    """Full pipeline: download → verify → extract → build → post_install.
+
+    *direct_deps* (see resolver.PlannedStep.direct_deps) is stashed on the
+    formula instance before building so get_build_env() and any
+    configure_args()/cmake_args()/... override can target the exact
+    dependency versions resolved for this install plan.
+    """
+    formula.direct_deps = direct_deps or {}
     print(col.header(f"Installing {col.pkg(formula.name, formula.version)}"))
 
     archive = download(formula)

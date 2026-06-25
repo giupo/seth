@@ -69,7 +69,7 @@ def _execute_plan(steps: list[PlannedStep], link: bool, force: bool, debug: bool
             and f.keg.exists()
         )
         if not already_built:
-            builder_install(f, debug=debug)
+            builder_install(f, debug=debug, direct_deps=step.direct_deps)
             cellar.record_install(f.name, f.version, f.keg)
         elif link:
             print(col.header(f"Relinking {col.pkg(f.name, f.version)}"))

@@ -53,6 +53,11 @@ class Formula:
     version: str = ""
     url: str = ""
     sha256: str = ""
+    # Populated by builder.install() before the build starts: direct
+    # dependencies resolved to the exact version chosen for this install
+    # plan ({dep_name: dep_version}). Lets configure_args() overrides point
+    # at a specific dependency keg instead of guessing via the root prefix.
+    direct_deps: dict[str, str] = {}
 
     @property
     def keg(self) -> Path:
