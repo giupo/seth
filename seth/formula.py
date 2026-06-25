@@ -83,6 +83,9 @@ class Formula:
     def patch(self, source_dir: Path):
         """Override for programmatic source modifications applied before build."""
 
+    def build(self, source_dir: Path):
+        pass
+        
     def post_install(self):
         pass
 
