@@ -42,6 +42,7 @@ def _filter_plan(plan: list[PlannedStep], force: bool, link: bool = True) -> lis
         step for step in plan
         if force
         or not cellar.is_installed(step.formula.name, step.formula.version)
+        or not step.formula.keg.exists()
         or (link and cellar.linked_version(step.formula.name) != step.formula.version)
     ]
 
@@ -70,7 +71,7 @@ def _execute_plan(steps: list[PlannedStep], link: bool, force: bool, debug: bool
         )
         if not already_built:
             builder_install(f, debug=debug, direct_deps=step.direct_deps)
-            cellar.record_install(f.name, f.version, f.keg)
+            cellar.record_install(f.name, f.version, f.keg, sha256=f.sha256)
         elif link:
             print(col.header(f"Relinking {col.pkg(f.name, f.version)}"))
         if link:
@@ -169,11 +170,13 @@ def cmd_info(args):
     if formula.build_dependencies:
         field("Build deps",   "  ".join(col.dim(d) for d in formula.build_dependencies))
     if inst_vers:
-        inst_str = "  ".join(
-            (col.b_green(v + " ✓") if v == linked else col.cyan(v))
-            for v in sorted(inst_vers, reverse=True)
-        )
-        field("Installed", inst_str)
+        parts = []
+        for v in sorted(inst_vers, reverse=True):
+            if v == linked:
+                parts.append(col.b_green(v + " ✓"))
+            else:
+                parts.append(col.cyan(v) + col.dim(" (keg only)"))
+        field("Installed", "  ".join(parts))
     else:
         field("Installed", col.dim("no"))
 
@@ -211,7 +214,14 @@ def cmd_unlink(args):
 
 
 def cmd_upgrade(args):
-    for spec in args.packages:
+    packages = args.packages or [
+        name for name in cellar.list_installed()
+        if cellar.linked_version(name)
+    ]
+    if not packages:
+        print(col.dim("Nothing to upgrade."))
+        return
+    for spec in packages:
         name, requested_version = _parse_pkg(spec)
 
         if not cellar.is_installed(name):
@@ -276,7 +286,10 @@ def cmd_edit(args):
 
 
 def _new_formula_path(name: str) -> Path:
-    # Write new formulas to the last search dir (bundled/local), not the remote cache.
+    # Prefer the remote formulas dir (fetched by seth update) if it exists;
+    # writing there keeps custom formulas separate from bundled source code.
+    if config.remote_formulas_dir.exists():
+        return config.remote_formulas_dir / f"{name}.py"
     return config.formula_search_dirs[-1] / f"{name}.py"
 
 
@@ -472,7 +485,54 @@ def cmd_config(args):
         print(f"    {col.dim(str(d))}{suffix}")
 
 
+def cmd_deps(args):
+    from .resolver import build_install_plan
+    name, version = _parse_pkg(args.package)
+    formula = load_formula(name, version)
+    plan = build_install_plan(formula)
+    deps = [s for s in plan if s.formula.name != formula.name]
+    if not deps:
+        print(col.dim(f"{col.bold(name)} has no dependencies"))
+        return
+    print(col.header(f"Dependencies of {col.pkg(formula.name, formula.version)}"))
+    for s in deps:
+        f = s.formula
+        installed = cellar.is_installed(f.name, f.version)
+        status = col.b_green("✓") if installed else col.dim("—")
+        suffix = col.dim("  (build only)") if s.build_only else ""
+        print(f"  {status}  {col.pkg(f.name, f.version)}{suffix}")
+
+
+def cmd_leaves(args):
+    from .resolver import parse_dep
+    installed = cellar.list_installed()
+    if not installed:
+        print(col.dim("No packages installed."))
+        return
+    needed: set[str] = set()
+    for name in installed:
+        ver = cellar.linked_version(name)
+        if not ver:
+            continue
+        try:
+            f = load_formula(name, ver)
+            for dep_str in f.dependencies + f.build_dependencies:
+                needed.add(parse_dep(dep_str).name)
+        except Exception:
+            pass
+    leaves = [n for n in sorted(installed) if n not in needed]
+    if not leaves:
+        print(col.dim("No leaf packages."))
+        return
+    for name in leaves:
+        ver = cellar.linked_version(name) or ""
+        print(f"  {col.pkg(name, ver) if ver else col.bold(name)}")
+
+
 def cmd_purge(args):
+    if not config.downloads.exists():
+        print(col.dim("Nothing to purge."))
+        return
     print(f"  {col.bold('Delete downloads')}")
     for item in config.downloads.iterdir():
         if item.is_file():
@@ -546,8 +606,8 @@ def main():
     p.add_argument("package", metavar="pkg[@version]")
     p.set_defaults(func=cmd_unlink)
 
-    p = sub.add_parser("upgrade", help="Upgrade installed packages")
-    p.add_argument("packages", nargs="+", metavar="pkg[@version]")
+    p = sub.add_parser("upgrade", help="Upgrade installed packages (all if none specified)")
+    p.add_argument("packages", nargs="*", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_upgrade)
 
@@ -574,6 +634,13 @@ def main():
     p = sub.add_parser("edit", help="Open a formula in $EDITOR")
     p.add_argument("formula", metavar="formula")
     p.set_defaults(func=cmd_edit)
+
+    p = sub.add_parser("deps", help="Show dependency tree of a package")
+    p.add_argument("package", metavar="pkg[@version]")
+    p.set_defaults(func=cmd_deps)
+
+    p = sub.add_parser("leaves", help="List installed packages that nothing depends on")
+    p.set_defaults(func=cmd_leaves)
 
     p = sub.add_parser("purge", help="Remove all downloaded tarballs")
     p.set_defaults(func=cmd_purge)

@@ -20,6 +20,18 @@ def test_get_build_env_prepends_root_paths(isolated_config):
     assert f"-I{root}/include" in env["CPPFLAGS"]
 
 
+def test_get_build_env_with_direct_deps_prepends_dep_keg(isolated_config):
+    dep_keg = isolated_config.cellar / "openssl" / "3.3.2"
+    dep_keg.mkdir(parents=True)
+    env = builder.get_build_env({"openssl": "3.3.2"})
+    assert str(dep_keg / "lib") in env["LDFLAGS"]
+    assert str(dep_keg / "include") in env["CPPFLAGS"]
+    assert str(dep_keg / "lib") in env["LIBRARY_PATH"]
+    # dep keg paths must appear before the global root paths
+    ldflags = env["LDFLAGS"]
+    assert ldflags.index(str(dep_keg / "lib")) < ldflags.index(str(isolated_config.root / "lib"))
+
+
 def test_get_build_env_does_not_prepend_to_ld_library_path(isolated_config, monkeypatch):
     # Deliberately excluded: it would make build tools pick up seth's own
     # libs instead of the system ones they were compiled against.

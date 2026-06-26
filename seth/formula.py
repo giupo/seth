@@ -57,7 +57,15 @@ class Formula:
     # dependencies resolved to the exact version chosen for this install
     # plan ({dep_name: dep_version}). Lets configure_args() overrides point
     # at a specific dependency keg instead of guessing via the root prefix.
-    direct_deps: dict[str, str] = {}
+    # Implemented as a property so each instance gets its own dict (class-level
+    # mutable defaults would be shared across all instances of the same class).
+    @property
+    def direct_deps(self) -> dict[str, str]:
+        return self.__dict__.setdefault("_direct_deps", {})
+
+    @direct_deps.setter
+    def direct_deps(self, value: dict[str, str]):
+        self.__dict__["_direct_deps"] = value
 
     @property
     def keg(self) -> Path:
