@@ -1,6 +1,6 @@
 [project]
 name = "seth"
-version = "0.3.1"
+version = "0.4.0"
 description = "A source-based package manager for Linux (Osiride platform)"
 requires-python = ">=3.10"
 dependencies = []
