@@ -18,6 +18,8 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "root", root)
     monkeypatch.setattr(config, "cellar", root / "Cellar")
     monkeypatch.setattr(config, "downloads", root / "Downloads")
+    monkeypatch.setattr(config, "db_path", root / "var" / "seth" / "db.json")
+    monkeypatch.setattr(config, "remote_formulas_dir", root / "var" / "seth" / "formulas")
     monkeypatch.setattr(config, "tmp_dir", str(tmp_path / "tmp"))
     monkeypatch.setattr(config, "formula_search_dirs", [formulas_dir])
     monkeypatch.setattr(config, "patch_dirs", [formulas_dir / "patches"])
