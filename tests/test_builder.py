@@ -105,15 +105,15 @@ def test_extract_copies_non_tarball_as_is(tmp_path):
     assert (build_dir / "raw_script.sh").exists()
 
 
-# ── _run ─────────────────────────────────────────────────────────────────────
+# ── run ──────────────────────────────────────────────────────────────────────
 
 def test_run_raises_on_nonzero_exit(tmp_path):
     with pytest.raises(RuntimeError, match="exit 1"):
-        builder._run(["sh", "-c", "exit 1"], cwd=tmp_path)
+        builder.run(["sh", "-c", "exit 1"], cwd=tmp_path)
 
 
 def test_run_succeeds_on_zero_exit(tmp_path):
-    builder._run(["sh", "-c", "exit 0"], cwd=tmp_path)  # should not raise
+    builder.run(["sh", "-c", "exit 0"], cwd=tmp_path)  # should not raise
 
 
 # ── build() dispatch ─────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ def recorded_cmds(monkeypatch):
     def fake_run(cmd, cwd, env=None):
         calls.append(list(cmd))
 
-    monkeypatch.setattr(builder, "_run", fake_run)
+    monkeypatch.setattr(builder, "run", fake_run)
     return calls
 
 

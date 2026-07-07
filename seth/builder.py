@@ -155,7 +155,7 @@ def extract(archive: Path, build_dir: Path) -> Path:
     return build_dir
 
 
-def _run(cmd: list[str], cwd: Path, env: dict | None = None):
+def run(cmd: list[str], cwd: Path, env: dict | None = None):
     """Run cmd in cwd, defaulting to get_build_env(); raise on non-zero exit."""
     if env is None:
         env = get_build_env()
@@ -176,7 +176,7 @@ def apply_patches(formula: Formula, source_dir: Path):
     for patch_file in formula.patches:
         path = _find_patch_file(formula.name, patch_file)
         print(f"  {col.tag('patch')}{col.dim(patch_file)}")
-        _run(["patch", "-p1", "--input", str(path)], cwd=source_dir)
+        run(["patch", "-p1", "--input", str(path)], cwd=source_dir)
     if type(formula).patch is not _Base.patch:
         print(f"  {col.tag('patch')}{col.dim('source patch')}")
         formula.patch(source_dir)
@@ -194,35 +194,35 @@ def build(formula: Formula, source_dir: Path):
     apply_patches(formula, source_dir)
 
     if system == BuildType.AUTOGEN:
-        _run(["./autogen.sh"], cwd=source_dir, env=env)
-        _run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
-        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
-        _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
+        run(["./autogen.sh"], cwd=source_dir, env=env)
+        run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
+        run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
+        run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
     
     elif system == BuildType.AUTOCONF:
-        _run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
-        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
-        _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
+        run(["./configure"] + formula.configure_args(), cwd=source_dir, env=env)
+        run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
+        run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
 
     elif system == BuildType.MAKE:
         # No configure step: bare Makefile projects (e.g. bzip2) that take
         # their settings (PREFIX, CC, ...) as make variables instead.
-        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
-        _run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
+        run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=source_dir, env=env)
+        run(["make", "install"] + formula.make_args(), cwd=source_dir, env=env)
 
     elif system == BuildType.CMAKE:
         build_subdir = source_dir / "_build"
         build_subdir.mkdir(exist_ok=True)
-        _run(["cmake", ".."] + formula.cmake_args(), cwd=build_subdir, env=env)
-        _run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=build_subdir, env=env)
-        _run(["make", "install"] + formula.make_args(), cwd=build_subdir, env=env)
+        run(["cmake", ".."] + formula.cmake_args(), cwd=build_subdir, env=env)
+        run(["make", f"-j{_nproc()}"] + formula.make_args(), cwd=build_subdir, env=env)
+        run(["make", "install"] + formula.make_args(), cwd=build_subdir, env=env)
 
     elif system == BuildType.MESON:
         build_subdir = source_dir / "_build"
-        _run(["meson", "setup", str(build_subdir)] + formula.meson_args(),
+        run(["meson", "setup", str(build_subdir)] + formula.meson_args(),
              cwd=source_dir, env=env)
-        _run(["ninja", "-C", str(build_subdir)], cwd=source_dir, env=env)
-        _run(["ninja", "-C", str(build_subdir), "install"], cwd=source_dir, env=env)
+        run(["ninja", "-C", str(build_subdir)], cwd=source_dir, env=env)
+        run(["ninja", "-C", str(build_subdir), "install"], cwd=source_dir, env=env)
 
     elif system == BuildType.CUSTOM:
         formula.build(source_dir)
