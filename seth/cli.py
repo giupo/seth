@@ -133,7 +133,7 @@ def cmd_uninstall(args):
             cellar.record_uninstall(name, ver)
 
 
-def cmd_list(args):
+def cmd_list(_):
     installed = cellar.list_installed()
     if not installed:
         print(col.dim("No packages installed."))
