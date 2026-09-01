@@ -298,6 +298,7 @@ def _formula_template(name: str) -> str:
     return f'''\
 from seth.formula import Formula
 from seth.types import BuildType
+from pathlib import Path
 
 class {class_name}Formula(Formula):
     name = "{name}"
@@ -469,6 +470,22 @@ def cmd_available(args):
 
 
 def cmd_config(args):
+    values = {
+        "root":         str(config.root),
+        "cellar":       str(config.cellar),
+        "formulas_url": config.formulas_url or "",
+        "db":           str(config.db_path),
+        "formulas":     "\n".join(str(d) for d in config.formula_search_dirs),
+    }
+
+    if args.name:
+        if args.name not in values:
+            print(f"seth: unknown config key '{args.name}'")
+            print(f"seth: available keys: {', '.join(values)}")
+            sys.exit(1)
+        print(values[args.name])
+        return
+
     def field(label: str, value: str):
         padded = f"{label + ':':<14}"
         print(f"  {col.bold(padded)}  {value}")
@@ -577,7 +594,7 @@ def main():
     parser.add_argument("--version", action="version", version=f"seth {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     sub.required = True
-
+    
     p = sub.add_parser("install", help="Download, build and install packages")
     p.add_argument("packages", nargs="+", metavar="pkg[@version]")
     p.add_argument("--force", action="store_true", help="Reinstall even if already installed")
@@ -626,6 +643,8 @@ def main():
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("config", help="Show current configuration")
+    p.add_argument("name", nargs="?", metavar="key",
+                   help="Print only this configuration value (root, cellar, formulas_url, db, formulas)")
     p.set_defaults(func=cmd_config)
 
     p = sub.add_parser("env", help="Print shell environment variables for the seth root prefix")
