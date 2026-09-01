@@ -557,6 +557,10 @@ def cmd_purge(args):
 
 
         
+def cmd_version(args):
+    print(f"{col.bold('seth')} {col.cyan(__version__)}")
+
+
 def cmd_env(args):
     root = config.root
 
@@ -649,6 +653,9 @@ def main():
 
     p = sub.add_parser("env", help="Print shell environment variables for the seth root prefix")
     p.set_defaults(func=cmd_env)
+
+    p = sub.add_parser("version", help="Show the seth version")
+    p.set_defaults(func=cmd_version)
 
     p = sub.add_parser("edit", help="Open a formula in $EDITOR")
     p.add_argument("formula", metavar="formula")
